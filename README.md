@@ -1,0 +1,377 @@
+# bw-modeling-mcp
+
+A Model Context Protocol (MCP) server that enables AI assistants like Claude to work directly inside SAP BW/4HANA systems — reading, creating and modifying BW modeling objects via the internal REST API used by Eclipse BWMT.
+
+**This is not a simulation.** Every tool call connects to a live BW system — write operations produce real changes.
+
+---
+
+## 🆕 What's New
+
+This section tracks recent additions and changes. Check back here after updates.
+> **Work in Progress** — bw-modeling-mcp already covers many typical BW development and analysis scenarios, but not everything yet. More is coming. The server has so far only been tested on our own demo systems — if you are running it against your own BW/4HANA system, feedback and bug reports are very welcome. Please use the [Issue templates](https://github.com/dnic-dev/bw-modeling-mcp/issues/new/choose) — you will be helping shape what gets built next.
+
+---
+
+## What it can do
+
+### Search & Discovery
+- Search BW objects by name or description (wildcards supported), filtered by type
+- Where-used / dependency analysis (xref) for any BW object
+- List DTPs dependent on an object or transformation
+
+### aDSO
+- Read aDSO structure (fields, settings, version state)
+- Create a new aDSO — from template or empty, field-based or InfoObject-based
+- Add InfoObject-backed fields or pure (field-based) fields
+- Remove fields
+- Manage key fields
+- Update field properties (aggregation, data type, length, etc.)
+- Update aDSO settings (type preset, flags, description)
+- Write-interface aDSO support (`pushMode`)
+
+### InfoObject
+- Read InfoObject definition
+- Create Characteristic — all data types (CHAR, NUMC, DATS, TIMS, SNUMC), with or without master data and texts, with referenced InfoObject, with compounding parents
+- Create Key Figure — all types (NUM, AMT, QTY, DAT, INT), all aggregations (SUM, MAX, MIN)
+- Add and remove display and navigation attributes
+
+### InfoArea
+- Read InfoArea definition (name, label, parent area, status)
+- Create a new InfoArea (immediately active, no activation step needed)
+- Move any BW object to a different InfoArea
+
+### InfoSource
+- Read InfoSource structure (fields, key fields, label, InfoArea)
+- Create InfoSource with full field definitions
+
+### Transformation
+- Read Transformation structure (all sources, all targets)
+- Map source fields to target InfoObjects (StepDirect)
+- Set formula rules (StepFormula)
+- Set field routines — ABAP and AMDP (StepRoutine)
+- Set start routines — ABAP and AMDP
+- Set end routines — ABAP and AMDP
+- Switch runtime between ABAP and AMDP
+
+### DTP (Data Transfer Process)
+- Create DTPs
+- Update DTP settings and description
+- Set value filters on fields
+- Set routine filters (ABAP code)
+
+### Push API
+- Get JSON push schema for a write-interface aDSO
+- Push JSON record arrays directly into an aDSO
+
+### General
+- Search & Where-Used (xref)
+- Activate BW objects (aDSO, InfoObject, Transformation, DTP)
+- Release locks without activating (discard changes)
+- Delete BW objects
+
+---
+
+## Combining with an ADT MCP Server
+
+For tasks involving ABAP or SQLScript (AMDP) logic inside Transformations, **bw-modeling-mcp works best alongside an ADT MCP server** such as [vibing-steampunk](https://github.com/oisee/vibing-steampunk).
+
+The BW MCP server handles the BW modeling structure — creating the Transformation, setting up routines, activating objects. The ADT MCP server handles reading and writing the actual ABAP class source code that backs the routine. Together, they cover the full development cycle from BW object creation to ABAP logic implementation.
+
+---
+
+## System Compatibility
+
+| System | Support |
+|---|---|
+| SAP BW/4HANA (all versions) | ✅ Full support |
+
+---
+
+## Requirements
+
+- SAP BW/4HANA system with REST API access (`/sap/bw/modeling/`)
+- Node.js 18 or later
+- An MCP-compatible AI client (Claude Desktop, Claude Code, etc.)
+
+---
+
+## Installation
+
+```bash
+git clone https://github.com/dnic-dev/bw-modeling-mcp.git
+cd bw-modeling-mcp
+npm install
+npm run build
+```
+
+---
+
+## Configuration
+
+The server is configured via environment variables:
+
+| Variable | Description | Required |
+|---|---|---|
+| `BW_URL` | BW system URL (e.g. `https://myhost:50001`) | yes |
+| `BW_USER` | SAP user name | yes |
+| `BW_PASSWORD` | SAP password | yes |
+| `BW_CLIENT` | SAP client (e.g. `001`) | yes |
+| `BW_LANGUAGE` | Language for object texts (e.g. `EN`, `DE`). Default: `DE` | no |
+
+### Claude Desktop
+
+Add to `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "bw-modeling-mcp": {
+      "command": "node",
+      "args": ["/path/to/bw-modeling-mcp/dist/index.js"],
+      "env": {
+        "BW_URL": "https://your-bw-host:50001",
+        "BW_USER": "YOUR_USER",
+        "BW_PASSWORD": "YOUR_PASSWORD",
+        "BW_CLIENT": "001",
+        "BW_LANGUAGE": "EN"
+      }
+    }
+  }
+}
+```
+
+### Claude Code
+
+Add `.mcp.json` to your project root:
+
+```json
+{
+  "mcpServers": {
+    "bw-modeling-mcp": {
+      "command": "node",
+      "args": ["/path/to/bw-modeling-mcp/dist/index.js"],
+      "env": {
+        "BW_URL": "https://your-bw-host:50001",
+        "BW_USER": "YOUR_USER",
+        "BW_PASSWORD": "YOUR_PASSWORD",
+        "BW_CLIENT": "001",
+        "BW_LANGUAGE": "EN"
+      }
+    }
+  }
+}
+```
+
+---
+
+## Tools Reference
+
+### `bw_search`
+Search BW objects by name or description. Supports wildcards (`*`). Optionally filter by object type (`ADSO`, `IOBJ`, `TRFN`, `DTPA`, etc.).
+
+### `bw_xref`
+Find all objects that reference a given BW object (where-used analysis). Use this to find Transformations and DTPs connected to an aDSO.
+
+### `bw_get_adso`
+Read the full structure of an aDSO — fields, key fields, settings, version state.
+
+### `bw_create_adso`
+Create a new aDSO. Supports two modes: `from_template` (copies structure from an existing aDSO) or `empty`. Supports all aDSO type presets including write-interface (`pushMode`).
+
+### `bw_update_adso`
+Modify an existing aDSO. Actions:
+- `add_field` — add an InfoObject-backed field
+- `add_pure_field` — add a field-based (pure) field without an InfoObject
+- `remove_field` — remove a field
+- `manage_keys` — set or update key fields
+- `update_field_properties` — change aggregation, data type, length, etc.
+- `update_settings` — change aDSO type preset, flags, or description
+
+### `bw_get_infoobject`
+Read an InfoObject definition (Characteristic or Key Figure).
+
+### `bw_create_infoobject`
+Create a new InfoObject. Supports:
+- **Characteristic (CHA):** all data types (CHAR, NUMC, DATS, TIMS, SNUMC), with or without master data and texts, with compounding parents (Klammermerkmale), with referenced InfoObject
+- **Key Figure (KYF):** all types (NUM, AMT, QTY, DAT, INT), all aggregations (SUM, MAX, MIN)
+
+Created as inactive — activate with `bw_activate`.
+
+### `bw_update_infoobject`
+Add or remove display (`DIS`) and navigation (`NAV`) attributes on an existing Characteristic.
+
+### `bw_get_infoarea`
+Read an InfoArea definition — name, label, parent area, object status.
+
+### `bw_create_infoarea`
+Create a new InfoArea. Immediately active after creation, no activation step needed.
+
+### `bw_move_object`
+Move any BW object (aDSO, InfoObject, InfoArea, etc.) to a different InfoArea.
+
+### `bw_get_infosource`
+Read an InfoSource (TRCS) structure — fields, key fields, label, InfoArea, version status.
+
+### `bw_create_infosource`
+Create a new InfoSource with full field definitions.
+
+### `bw_update_infosource`
+Update an existing InfoSource — fields and description.
+
+### `bw_get_transformation`
+Read a Transformation structure including all field mapping rules, routines, source, and target. Transformation names are UUID-like keys — use `bw_xref` on the target aDSO to find them.
+
+### `bw_create_transformation`
+Create a new Transformation. Supports all source types (aDSO, InfoSource, DataSource/RSDS) and all target types (aDSO). Can copy structure from an existing Transformation.
+
+### `bw_update_transformation`
+Modify field mappings in an existing Transformation:
+- Map source field to target InfoObject (StepDirect)
+- Set formula rule for a target field (StepFormula)
+
+### `bw_set_transformation_routine`
+Set a field routine, start routine, or end routine on a Transformation. Supports both ABAP and AMDP (SQLScript). The routine code is written directly via the tool.
+
+### `bw_delete_transformation_routine`
+Remove an existing routine from a Transformation field.
+
+### `bw_set_transformation_runtime`
+Switch the Transformation runtime between ABAP and AMDP.
+
+### `bw_get_dtp`
+Read the full definition of a single DTP — source, target, transformation reference, extraction settings (mode, package size), and all filter fields including value selections and routine code. DTP names are UUID-like keys — use `bw_xref` or `bw_get_dtps` to find them.
+
+### `bw_get_dtps`
+List all DTPs that depend on a given BW object or Transformation.
+
+### `bw_create_dtp`
+Create a new DTP on a Transformation. Source and target are derived from the Transformation automatically.
+
+### `bw_update_dtp`
+Update a DTP — description and value filters on fields.
+
+### `bw_set_dtp_filter_routine`
+Set an ABAP routine filter on a DTP field.
+
+### `bw_get_push_schema`
+Get the expected JSON schema for pushing data into a write-interface aDSO.
+
+### `bw_push_data`
+Push a JSON record array directly into a write-interface aDSO via the BW Push API (`/sap/bw4/v1/push/`).
+
+### `bw_activate`
+Activate one or more BW objects. Handles impact analysis and automatically deactivated DTPs. Supports: `adso`, `iobj`, `trfn`, `dtp`.
+
+### `bw_unlock`
+Release a lock on a BW object without activating (discard changes).
+
+### `bw_delete`
+Delete a BW object. Works for aDSO, InfoObject, InfoArea, and other types.
+
+---
+
+## Example Prompts
+
+### Modify — working in the BW system
+
+**Setting up a new BW area for a CRM integration:**
+```
+We are setting up a new BW area for our CRM integration project.
+Create the InfoArea "ZCRM" with description "CRM Integration" below InfoArea "ZSALES".
+Inside it, create a field-based aDSO to store sales order data loaded from the OpenCRX REST API.
+The aDSO should contain the following fields: order_id (key, CHAR 20), customer_id (CHAR 10),
+order_date (DATS), amount (DEC 15,2), currency (CUKY 5), status (CHAR 4).
+Name the aDSO starting with "Z".
+```
+
+**Building a full data flow from field-based to InfoObject-based:**
+```
+Create a second aDSO in InfoArea "ZCRM" — this time InfoObject-based, same business content
+as ZCRM_ORDERS. Create all required InfoObjects for this aDSO. Decide independently on type
+(Characteristic/Key Figure), master data, and texts based on the field semantics.
+Then create a Transformation from ZCRM_ORDERS to the new aDSO and map all fields 1:1.
+Activate the Transformation. Finally, create a DTP on the Transformation and activate it.
+```
+
+**Adding derived logic with an AMDP routine and DTP filter:**
+```
+Create a new InfoObject to flag high-value orders above $10,000.
+Choose an appropriate technical name and description.
+Add the InfoObject to aDSO ZCRM_ORDERS.
+Create an AMDP field routine for this field in the Transformation and derive the logic
+in SQLScript: set the flag if the calculated order total (quantity × unit price) exceeds 10,000.
+Adjust the DTP filter: load only orders with status "CONFIRMED" (value filter)
+and only orders from the current calendar year (routine filter).
+```
+
+---
+
+### Read-Only — understanding existing models
+
+**Full data lineage analysis:**
+```
+Analyze the complete data lineage of aDSO ZSLS_ORDSUM down to all connected DataSources
+from source system OCRXCLNT100.
+Include all intermediate objects: aDSOs, Transformations, InfoSources, and DataSources.
+Also trace any objects referenced inside transformation routines (e.g. via AMDP or ABAP logic)
+and follow their lineage as well.
+Present the result as a structured table with columns:
+Level (1 = closest to ZSLS_ORDSUM), Object Type, Technical Name, Description, Source System.
+Use full object type names — no abbreviations.
+```
+
+---
+
+### In Combination with an ADT MCP Server
+
+**AI writes AMDP logic directly into the SAP system:**
+```
+In Transformation ZCRM_T001, there is an AMDP field routine for the field ZVAL_FLAG.
+Read the current SQLScript source of the backing ABAP class via the ADT MCP server.
+The logic needs to be extended: additionally set the flag for orders where the customer
+is in region "EMEA" (field ZCUST_REGION = 'EMEA').
+Update the ABAP class source via ADT, then activate the Transformation via bw-modeling-mcp.
+```
+
+---
+
+## How it works
+
+The server connects to the SAP BW Modeling REST API (`/sap/bw/modeling/`) — the same internal API used by Eclipse BWMT. All write operations follow the BW locking protocol:
+
+1. **Lock** — acquires an exclusive lock and returns a `lockHandle`
+2. **Read** — fetches the current complete XML of the object
+3. **Modify** — applies changes to the XML
+4. **PUT** — sends the full modified XML back (never partial updates)
+5. **Activate** — promotes the inactive version to active
+6. **Unlock** — releases the lock
+
+Session cookies and CSRF tokens are managed automatically.
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the full technical architecture and complete API reference.
+
+---
+
+## Roadmap
+
+- **BW on HANA support** — extend compatibility to SAP BW 7.5 on HANA. Support will be ⚠️ Partial — not all REST endpoints available in BW/4HANA exist in BW on HANA, so some tools may not be available or behave differently.
+- **CompositeProvider** — create and manage CompositeProviders
+- **BW Queries** — create and modify BW Queries, variables, restricted/calculated key figures
+- **Process Chains** — build and manage Process Chains
+- **Open ODS View** — create Open ODS Views
+- **Further BW/4HANA objects** — BW/4HANA Cockpit functions and additional modeling objects
+
+---
+
+## Contributing
+
+Issues and feature requests are welcome — please use the [Issue templates](https://github.com/dnic-dev/bw-modeling-mcp/issues/new/choose).
+
+If you have access to a BW/4HANA system and want to help expand coverage, I am happy to hear from you. The best way to contribute is to try it out and report what works, what doesn't, and what's missing.
+
+---
+
+## License
+
+MIT

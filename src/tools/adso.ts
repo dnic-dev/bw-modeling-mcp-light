@@ -1,0 +1,814 @@
+import { BwClient, MEDIA_TYPES } from '../bw-client.js';
+import { parseInfoObjectProps } from './infoobject.js';
+
+// ── aDSO type presets ────────────────────────────────────────────────────────
+
+const typePresets: Record<string, Record<string, boolean>> = {
+  standard: {
+    activateData: true,
+    cubeDeltaOnly: false,
+    directUpdate: false,
+    isReportingObject: false,
+    noAqDeletion: false,
+  },
+  staging_inbound_only: {
+    activateData: true,
+    cubeDeltaOnly: false,
+    directUpdate: false,
+    isReportingObject: false,
+    noAqDeletion: false,
+  },
+  staging_compress: {
+    activateData: true,
+    cubeDeltaOnly: false,
+    directUpdate: false,
+    isReportingObject: false,
+    noAqDeletion: false,
+  },
+  staging_reporting: {
+    activateData: true,
+    cubeDeltaOnly: false,
+    directUpdate: false,
+    isReportingObject: true,
+    noAqDeletion: true,
+  },
+  datamart: {
+    activateData: true,
+    cubeDeltaOnly: true,
+    directUpdate: false,
+    isReportingObject: true,
+    noAqDeletion: false,
+  },
+  direct_update: {
+    activateData: false,
+    cubeDeltaOnly: false,
+    directUpdate: true,
+    isReportingObject: false,
+    noAqDeletion: false,
+  },
+};
+
+/**
+ * Set or replace a boolean attribute on the root <adso:dataStore> element.
+ * If the attribute already exists, its value is replaced in-place.
+ * If not, it is injected just before the first closing > of the root tag.
+ */
+function setRootAttr(xml: string, attr: string, value: string): string {
+  const existing = new RegExp(`\\b${attr}="[^"]*"`, 'g');
+  if (existing.test(xml)) {
+    return xml.replace(new RegExp(`\\b${attr}="[^"]*"`, 'g'), `${attr}="${value}"`);
+  }
+  // Attribute absent — inject into the root element opening tag before its first >
+  return xml.replace(/(<adso:dataStore\b(?:[^>]|\n)*?)(\s*>)/, `$1 ${attr}="${value}"$2`);
+}
+
+const ADSO_ACCEPT = MEDIA_TYPES['adso'];
+
+export interface AdsoSettings {
+  adsoType?: 'standard' | 'staging_inbound_only' | 'staging_compress' | 'staging_reporting' | 'datamart' | 'direct_update';
+  writeChangelog?: boolean;
+  snapShotScenario?: boolean;
+  uniqueDataRecords?: boolean;
+  planningMode?: boolean;
+  writeInterface?: boolean;
+  label?: string;
+  transport?: string;
+}
+
+/**
+ * bw_update_adso action "update_settings" — change aDSO type and/or boolean flags.
+ *
+ * Workflow: GET full XML → lock → apply changes → PUT → return result.
+ * Lock handle is returned so the caller can invoke bw_activate next.
+ * Never modifies <tables>, <hashElements>, <pushURI>, or <tlogoProperties>.
+ */
+export async function bwUpdateAdsoSettings(
+  client: BwClient,
+  adsoName: string,
+  settings: AdsoSettings
+): Promise<string> {
+  const adsoUpper = adsoName.toUpperCase();
+  const adsoPath = `/sap/bw/modeling/adso/${adsoName.toLowerCase()}/m`;
+
+  // 1. Read current XML
+  const adsoResult = await client.get(adsoPath, ADSO_ACCEPT);
+  const timestamp = adsoResult.headers['timestamp'] ?? adsoResult.headers['TIMESTAMP'];
+  let xml = adsoResult.body;
+
+  // 2. Apply type preset wholesale (overwrites the 5 core attributes)
+  if (settings.adsoType !== undefined) {
+    const preset = typePresets[settings.adsoType];
+    for (const [attr, val] of Object.entries(preset)) {
+      xml = setRootAttr(xml, attr, String(val));
+    }
+  }
+
+  // 3. Apply individual boolean flags on top
+  const boolFlags: Array<keyof AdsoSettings> = [
+    'writeChangelog', 'snapShotScenario', 'uniqueDataRecords', 'planningMode',
+  ];
+  for (const flag of boolFlags) {
+    if (settings[flag] !== undefined) {
+      xml = setRootAttr(xml, flag, String(settings[flag]));
+    }
+  }
+
+  // writeInterface maps to the XML attribute "pushMode"
+  if (settings.writeInterface !== undefined) {
+    xml = setRootAttr(xml, 'pushMode', String(settings.writeInterface));
+  }
+
+  // 4. Update label in <endUserTexts label="..."/>
+  if (settings.label !== undefined) {
+    const endUserTextsTag = `<endUserTexts label="${settings.label}"/>`;
+    if (/<endUserTexts[^>]*\/>/.test(xml)) {
+      // Replace existing <endUserTexts .../> (with or without label attribute)
+      xml = xml.replace(/<endUserTexts[^>]*\/>/, endUserTextsTag);
+    } else {
+      // No <endUserTexts> present yet — insert before <tlogoProperties>
+      xml = xml.replace(/(<tlogoProperties)/, `${endUserTextsTag}\n  $1`);
+    }
+  }
+
+  // 5. Lock → PUT
+  const lockHandle = await client.lock('adso', adsoName);
+  try {
+    await client.put('adso', adsoName, lockHandle, xml, timestamp, settings.transport);
+  } catch (err) {
+    await client.unlock('adso', adsoName).catch(() => {/* ignore */});
+    throw err;
+  }
+
+  return JSON.stringify({
+    success: true,
+    message: `aDSO ${adsoUpper} settings updated. Call bw_activate to activate.`,
+    lock_handle: lockHandle,
+    adso_name: adsoUpper,
+    object_type: 'adso',
+    applied: settings,
+  });
+}
+
+/**
+ * bw_get_adso — read aDSO structure (inactive version).
+ * Returns raw XML + status + timestamp header.
+ */
+export async function bwGetAdso(client: BwClient, adsoName: string): Promise<string> {
+  const path = `/sap/bw/modeling/adso/${adsoName.toLowerCase()}/m`;
+  const result = await client.get(path, ADSO_ACCEPT);
+  const status = result.headers['object_status'] ?? result.headers['OBJECT_STATUS'] ?? 'unknown';
+  const ts = result.headers['timestamp'] ?? '';
+  return `aDSO: ${adsoName.toUpperCase()}\nStatus: ${status}\nTimestamp: ${ts}\n\n${result.body}`;
+}
+
+/**
+ * Build the <element> XML snippet to inject into an aDSO.
+ * Based on the recorded PUT payload pattern from adso_workflow.md Block 3b.
+ */
+function buildAdsoElement(iObjName: string, props: ReturnType<typeof parseInfoObjectProps>): string {
+  const { conversionRoutine, label, dataType, length } = props;
+  const name = iObjName.toUpperCase();
+  const convAttr = conversionRoutine ? ` conversionRoutine="${conversionRoutine}"` : '';
+  return `  <element xsi:type="adso:AdsoElement" name="${name}" keep="false"
+    aggregationBehavior="NONE" infoObjectName="${name}"${convAttr}
+    dimension="#///ALL§" sidDeterminationMode="S">
+    <endUserTexts label="${label}"/>
+    <inlineType name="${dataType}" length="${length}" globalElementName="${name}"/>
+    <associationType>1</associationType>
+  </element>`;
+}
+
+/**
+ * Remove an <element> block (and any matching <keyElement>) from aDSO XML.
+ * The server removes the field when the PUT body no longer contains it.
+ */
+function removeElement(adsoXml: string, iObjName: string): string {
+  const name = iObjName.toUpperCase();
+
+  // Remove the full <element ... name="NAME" ...>...</element> block
+  const elementRegex = new RegExp(
+    `[ \\t]*<element\\b[^>]*\\bname="${name}"[^>]*>[\\s\\S]*?<\\/element>\\n?`,
+    'g'
+  );
+  let result = adsoXml.replace(elementRegex, '');
+
+  // Remove <keyElement>#///NAME</keyElement> if the field was a key
+  const keyElementRegex = new RegExp(
+    `[ \\t]*<keyElement>[^<]*\\/${name}<\\/keyElement>\\n?`,
+    'g'
+  );
+  result = result.replace(keyElementRegex, '');
+
+  return result;
+}
+
+/**
+ * Insert the new element into the aDSO XML before the first <keyElement> tag.
+ * Falls back to insertion before </adso:dataStore> if no keyElement exists.
+ */
+function injectElement(adsoXml: string, elementXml: string): string {
+  // Check if InfoObject is already present
+  // (elements after injection should remain valid)
+
+  const insertBefore = '<keyElement';
+  const idx = adsoXml.indexOf(insertBefore);
+  if (idx !== -1) {
+    return adsoXml.substring(0, idx) + elementXml + '\n  ' + adsoXml.substring(idx);
+  }
+  // Fallback: before closing root tag
+  return adsoXml.replace('</adso:dataStore>', elementXml + '\n</adso:dataStore>');
+}
+
+/**
+ * bw_update_adso action "manage_keys" — replace the complete <keyElement> list.
+ *
+ * Removes all existing <keyElement> entries and inserts one per entry in keyFields,
+ * positioned after the last <element> and before <tlogoProperties>.
+ * All other XML (elements, tables, hashElements, pushURI, tlogoProperties) is unchanged.
+ * Returns the lockHandle so the caller can invoke bw_activate next.
+ */
+export async function bwUpdateAdsoManageKeys(
+  client: BwClient,
+  adsoName: string,
+  keyFields: string[],
+  transport?: string
+): Promise<string> {
+  const adsoUpper = adsoName.toUpperCase();
+  const adsoPath = `/sap/bw/modeling/adso/${adsoName.toLowerCase()}/m`;
+
+  // 1. Read current XML
+  const adsoResult = await client.get(adsoPath, ADSO_ACCEPT);
+  const timestamp = adsoResult.headers['timestamp'] ?? adsoResult.headers['TIMESTAMP'];
+  let xml = adsoResult.body;
+
+  // 2. Strip all existing <keyElement> entries (with any leading whitespace + trailing newline)
+  xml = xml.replace(/[ \t]*<keyElement>[^<]*<\/keyElement>\n?/g, '');
+
+  // 3. Build new <keyElement> block
+  const normalized = keyFields.map((f) => f.trim().toUpperCase()).filter(Boolean);
+  if (normalized.length > 0) {
+    const keyBlock = normalized.map((f) => `  <keyElement>#///${f}</keyElement>`).join('\n') + '\n';
+    // Insert before <tlogoProperties>; fall back to before </adso:dataStore>
+    if (xml.includes('<tlogoProperties')) {
+      xml = xml.replace('<tlogoProperties', keyBlock + '  <tlogoProperties');
+    } else {
+      xml = xml.replace('</adso:dataStore>', keyBlock + '</adso:dataStore>');
+    }
+  }
+
+  // 4. Lock → PUT
+  const lockHandle = await client.lock('adso', adsoName);
+  try {
+    await client.put('adso', adsoName, lockHandle, xml, timestamp, transport);
+  } catch (err) {
+    await client.unlock('adso', adsoName).catch(() => {/* ignore */});
+    throw err;
+  }
+
+  return JSON.stringify({
+    success: true,
+    message: `aDSO ${adsoUpper} key fields updated. Call bw_activate to activate.`,
+    lock_handle: lockHandle,
+    adso_name: adsoUpper,
+    object_type: 'adso',
+    key_fields: normalized,
+  });
+}
+
+export interface FieldProperties {
+  // InfoObject-backed fields:
+  sidDeterminationMode?: 'N' | 'R' | 'S' | 'M';
+  localDescription?: string | null;   // null = clear override → <descriptions/>
+  // Pure fields (Kennzahlen):
+  aggregationBehavior?: 'SUM' | 'MIN' | 'MAX' | 'AVG' | 'LAST' | 'NONE';
+  fixedCurrency?: string | null;      // null = remove element (dynamic currency)
+  fixedUnit?: string | null;          // null = remove element (dynamic unit)
+  description?: string;               // <localProperties><descriptions label="..."/>
+  transport?: string;
+}
+
+/**
+ * bw_update_adso action "update_field_properties" — modify properties of a single field.
+ *
+ * Finds the <element name="FIELDNAME"> block, applies only the specified properties,
+ * and PUTs the full XML back. Never touches inlineType, conversionRoutine, outputLength,
+ * associationType, associationValid, or atom:link.
+ */
+export async function bwUpdateAdsoFieldProperties(
+  client: BwClient,
+  adsoName: string,
+  fieldName: string,
+  properties: FieldProperties
+): Promise<string> {
+  const adsoUpper = adsoName.toUpperCase();
+  const nameUpper = fieldName.trim().toUpperCase();
+
+  // 1. GET full XML
+  const adsoPath = `/sap/bw/modeling/adso/${adsoName.toLowerCase()}/m`;
+  const adsoResult = await client.get(adsoPath, ADSO_ACCEPT);
+  const timestamp = adsoResult.headers['timestamp'] ?? adsoResult.headers['TIMESTAMP'];
+  const fullXml = adsoResult.body;
+
+  // 2. Find the element block — opening tag may span multiple lines, hence [^>]* matches \n
+  const elementRegex = new RegExp(
+    `[ \\t]*<element\\b[^>]*\\bname="${nameUpper}"[^>]*>[\\s\\S]*?<\\/element>\\n?`
+  );
+  const match = elementRegex.exec(fullXml);
+  if (!match) {
+    return JSON.stringify({
+      success: false,
+      message: `Field ${nameUpper} not found in aDSO ${adsoUpper}.`,
+    });
+  }
+
+  // 3. Detect field type
+  const isInfoObject = /\binfoObjectName="/.test(match[0]);
+  let elem = match[0];
+
+  // ── Attribute helpers ────────────────────────────────────────────────────
+  function replaceAttr(attr: string, value: string): void {
+    if (new RegExp(`\\b${attr}="[^"]*"`).test(elem)) {
+      elem = elem.replace(new RegExp(`\\b${attr}="[^"]*"`), `${attr}="${value}"`);
+    } else {
+      // Inject before the first > of the opening tag (may span lines)
+      elem = elem.replace(/(<element\b(?:[^>]|\n)*?)(\s*>)/, `$1 ${attr}="${value}"$2`);
+    }
+  }
+
+  function replaceDescriptions(desc: string): void {
+    if (/<descriptions[^>]*\/>/.test(elem)) {
+      elem = elem.replace(/<descriptions[^>]*\/>/, desc);
+    } else if (/<descriptions>/.test(elem)) {
+      elem = elem.replace(/<descriptions>[\s\S]*?<\/descriptions>/, desc);
+    } else {
+      // <localProperties> exists but has no <descriptions> yet — inject inside
+      elem = elem.replace(/(<localProperties[^>]*>)/, `$1\n    ${desc}`);
+    }
+  }
+
+  // ── Apply properties ──────────────────────────────────────────────────────
+  if (properties.sidDeterminationMode !== undefined) {
+    replaceAttr('sidDeterminationMode', properties.sidDeterminationMode);
+  }
+
+  if (properties.aggregationBehavior !== undefined) {
+    replaceAttr('aggregationBehavior', properties.aggregationBehavior);
+  }
+
+  if (properties.localDescription !== undefined) {
+    const desc = properties.localDescription === null
+      ? '<descriptions/>'
+      : `<descriptions label="${properties.localDescription}"/>`;
+    replaceDescriptions(desc);
+  }
+
+  if (properties.description !== undefined) {
+    replaceDescriptions(`<descriptions label="${properties.description}"/>`);
+  }
+
+  if (properties.fixedCurrency !== undefined) {
+    if (properties.fixedCurrency === null) {
+      elem = elem.replace(/[ \t]*<fixedCurrency>[^<]*<\/fixedCurrency>\n?/, '');
+    } else if (/<fixedCurrency>/.test(elem)) {
+      elem = elem.replace(/<fixedCurrency>[^<]*<\/fixedCurrency>/, `<fixedCurrency>${properties.fixedCurrency}</fixedCurrency>`);
+    } else {
+      elem = elem.replace(/(<inlineType[^>]*\/>)/, `$1\n  <fixedCurrency>${properties.fixedCurrency}</fixedCurrency>`);
+    }
+  }
+
+  if (properties.fixedUnit !== undefined) {
+    if (properties.fixedUnit === null) {
+      elem = elem.replace(/[ \t]*<fixedUnit>[^<]*<\/fixedUnit>\n?/, '');
+    } else if (/<fixedUnit>/.test(elem)) {
+      elem = elem.replace(/<fixedUnit>[^<]*<\/fixedUnit>/, `<fixedUnit>${properties.fixedUnit}</fixedUnit>`);
+    } else {
+      elem = elem.replace(/(<inlineType[^>]*\/>)/, `$1\n  <fixedUnit>${properties.fixedUnit}</fixedUnit>`);
+    }
+  }
+
+  // 4. Splice modified element back into full XML
+  const updatedXml =
+    fullXml.substring(0, match.index) +
+    elem +
+    fullXml.substring(match.index + match[0].length);
+
+  // 5. Lock → PUT
+  const lockHandle = await client.lock('adso', adsoName);
+  try {
+    await client.put('adso', adsoName, lockHandle, updatedXml, timestamp, properties.transport);
+  } catch (err) {
+    await client.unlock('adso', adsoName).catch(() => {/* ignore */});
+    throw err;
+  }
+
+  return JSON.stringify({
+    success: true,
+    message: `Field ${nameUpper} in aDSO ${adsoUpper} updated. Call bw_activate to activate.`,
+    lock_handle: lockHandle,
+    adso_name: adsoUpper,
+    object_type: 'adso',
+    field_name: nameUpper,
+    field_type: isInfoObject ? 'infoobject' : 'pure',
+    applied: properties,
+  });
+}
+
+// ── Pure field support ───────────────────────────────────────────────────────
+
+export interface FieldDef {
+  name: string;
+  label: string;
+  dataType: string;
+  precision?: number;
+  scale?: number;
+  length?: number;
+  aggregationBehavior?: string;
+  isKey?: boolean;
+}
+
+// Keyfigure types: LocalKeyfigureProperties, aggregationBehavior, <semantics> tag
+const KEYFIGURE_TYPES = new Set([
+  'CURR', 'QUAN', 'DEC', 'D16D', 'D34D', 'FLTP',
+  'INT1', 'INT2', 'INT4', 'INT8',
+]);
+
+// Fixed-length types: [length, precision, scale] — user input ignored
+// precision=0 is omitted from XML; scale=0 is always omitted
+const FIXED_LENGTH_TYPES: Record<string, [number, number, number]> = {
+  'INT1': [3,  0, 0],
+  'INT2': [5,  0, 0],
+  'INT4': [10, 0, 0],
+  'INT8': [19, 0, 0],
+  'FLTP': [16, 16, 0],
+  'DATS': [8,  0, 0],
+  'TIMS': [6,  0, 0],
+  'LANG': [1,  0, 0],
+  'CUKY': [5,  0, 0],
+  'UNIT': [3,  0, 0],
+  'D16R': [16, 0, 0],
+  'D16N': [16, 0, 0],
+  'D34N': [34, 0, 0],
+};
+
+// User-facing type names mapped to internal API names
+const TYPE_NAME_MAP: Record<string, string> = {
+  'STRING':    'STRG',
+  'RAWSTRING': 'RSTR',
+  'SSTRING':   'SSTR',
+  'DF16_RAW':  'D16R',
+  'DF34_RAW':  'D34R',
+  'DF16_DEC':  'D16D',
+  'DF34_DEC':  'D34D',
+};
+
+// <semantics> tag value per type (omitted if not in this map)
+const SEMANTICS_TAG: Record<string, string> = {
+  'INT1': 'INT', 'INT2': 'INT', 'INT4': 'INT', 'INT8': 'INT',
+  'FLTP': 'NUM', 'DEC':  'NUM',
+  'CURR': 'AMO', 'QUAN': 'QUA',
+};
+
+// semanticType attribute for <inlineType>
+const SEMANTIC_TYPE: Record<string, string> = {
+  'DATS': 'date',
+  'CUKY': 'currencyCode',
+  'CURR': 'amount',
+  'QUAN': 'quantity',
+};
+
+function buildPureFieldElement(field: FieldDef): string {
+  const name = field.name.trim().toUpperCase();
+  const apiType = TYPE_NAME_MAP[field.dataType] ?? field.dataType;
+  const isKeyfigure = KEYFIGURE_TYPES.has(apiType);
+  const fixedDims = FIXED_LENGTH_TYPES[apiType];
+
+  // Build <inlineType> attributes
+  const inlineAttrs: string[] = [`name="${apiType}"`];
+
+  if (fixedDims) {
+    // Fixed-length types: always use lookup values, ignore user input
+    inlineAttrs.push(`length="${fixedDims[0]}"`);
+    if (fixedDims[1] !== 0) inlineAttrs.push(`precision="${fixedDims[1]}"`);
+    // scale omitted (always 0)
+  } else if (apiType === 'CURR' || apiType === 'QUAN') {
+    // CURR/QUAN: length always 0; precision in XML = decimal places (scale preferred, fallback to precision)
+    inlineAttrs.push('length="0"');
+    const decimalPlaces = field.scale ?? field.precision;
+    if (decimalPlaces !== undefined) inlineAttrs.push(`precision="${decimalPlaces}"`);
+  } else if (apiType === 'D16D' || apiType === 'D34D') {
+    // Decimal float: length=0, user-defined precision
+    inlineAttrs.push('length="0"');
+    if (field.precision !== undefined) inlineAttrs.push(`precision="${field.precision}"`);
+  } else if (apiType === 'RSTR' || apiType === 'STRG') {
+    // No length attribute for RSTR/STRG
+  } else {
+    // User-defined: CHAR, NUMC, SSTR, RAW, DEC etc.
+    if (field.length !== undefined) inlineAttrs.push(`length="${field.length}"`);
+    if (field.precision !== undefined) inlineAttrs.push(`precision="${field.precision}"`);
+    // scale omitted
+  }
+
+  const semanticType = SEMANTIC_TYPE[apiType] ?? 'empty';
+  inlineAttrs.push(`semanticType="${semanticType}"`);
+
+  // aggregationBehavior — LOB types (STRG, RSTR) never get this attribute
+  const isLob = apiType === 'STRG' || apiType === 'RSTR';
+  const aggr = isLob ? undefined : (field.aggregationBehavior ?? (isKeyfigure ? 'SUM' : undefined));
+  const aggrAttr = aggr !== undefined ? ` aggregationBehavior="${aggr}"` : '';
+
+  // conversionRoutine (LANG only)
+  const convAttr = apiType === 'LANG' ? ' conversionRoutine="ISOLA"' : '';
+
+  const localPropsType = isKeyfigure
+    ? 'BwCore:LocalKeyfigureProperties'
+    : 'BwCore:LocalCharacteristicProperties';
+
+  const semanticsTag = SEMANTICS_TAG[apiType];
+  const semanticsLine = semanticsTag ? `\n    <semantics>${semanticsTag}</semantics>` : '';
+
+  return (
+    `  <element xsi:type="adso:AdsoElement" name="${name}"${aggrAttr}${convAttr}\n` +
+    `    dimension="#///GROUP1§" sidDeterminationMode="N">\n` +
+    `    <inlineType ${inlineAttrs.join(' ')}/>\n` +
+    `    <localProperties xsi:type="${localPropsType}">\n` +
+    `      <descriptions label="${field.label}"/>\n` +
+    `    </localProperties>${semanticsLine}\n` +
+    `  </element>`
+  );
+}
+
+/**
+ * bw_create_adso — create a new aDSO shell.
+ *
+ * action "from_template": copies fields/keys/settings from an existing aDSO (pass templateName).
+ * action "empty": creates a minimal empty aDSO with the given adsoType preset.
+ *
+ * Workflow: Lock (CREA) → POST minimal XML → Unlock
+ * After creation the aDSO is inactive — call bw_activate to activate it.
+ */
+export async function bwCreateAdso(
+  client: BwClient,
+  adsoName: string,
+  label: string,
+  infoArea: string,
+  action: 'from_template' | 'empty' = 'from_template',
+  templateName?: string,
+  adsoType: string = 'standard',
+  pkg: string = '$TMP',
+  writeInterface: boolean = false
+): Promise<string> {
+  const nameUpper = adsoName.toUpperCase();
+  const infoAreaUpper = infoArea.toUpperCase();
+  const language = process.env.BW_LANGUAGE ?? 'DE';
+
+  const lockHandle = await client.lock('adso', adsoName, {
+    'activity_context': 'CREA',
+    'parent_name': infoAreaUpper,
+    'parent_type': 'AREA',
+  });
+
+  let body: string;
+  const pushModeAttr = writeInterface ? ' pushMode="true"' : '';
+  if (action === 'empty') {
+    const preset = typePresets[adsoType] ?? typePresets['standard'];
+    const typeAttrStr = Object.entries(preset).map(([k, v]) => `${k}="${v}"`).join(' ');
+    body =
+      `<?xml version="1.0" encoding="UTF-8"?>\n` +
+      `<adso:dataStore xmlns:adso="http://www.sap.com/bw/modeling/adso.ecore"` +
+      ` xmlns:adtcore="http://www.sap.com/adt/core"` +
+      ` schemaVersion="1.0" name="${nameUpper}" readOnly="false" ${typeAttrStr}${pushModeAttr}>\n` +
+      `  <endUserTexts label="${label}"/>\n` +
+      `  <tlogoProperties adtcore:language="${language}" adtcore:name="${nameUpper}"` +
+      ` adtcore:type="ADSO" adtcore:masterLanguage="${language}">\n` +
+      `    <infoArea>${infoAreaUpper}</infoArea>\n` +
+      `  </tlogoProperties>\n` +
+      `  <dimension name="GROUP1">\n` +
+      `    <descriptions/>\n` +
+      `  </dimension>\n` +
+      `</adso:dataStore>`;
+  } else {
+    const templateElement = templateName
+      ? `\n  <template objectName="${templateName.toUpperCase()}" tlogo="ADSO"/>`
+      : '';
+    body =
+      `<?xml version="1.0" encoding="UTF-8"?>\n` +
+      `<adso:dataStore xmlns:adso="http://www.sap.com/bw/modeling/adso.ecore"` +
+      ` xmlns:adtcore="http://www.sap.com/adt/core"` +
+      ` schemaVersion="1.0" name="${nameUpper}" readOnly="false"` +
+      ` activateData="true" writeChangelog="true"${pushModeAttr}>\n` +
+      `  <endUserTexts label="${label}"/>\n` +
+      `  <tlogoProperties adtcore:language="${language}" adtcore:name="${nameUpper}"` +
+      ` adtcore:type="ADSO" adtcore:masterLanguage="${language}">\n` +
+      `    <infoArea>${infoAreaUpper}</infoArea>\n` +
+      `  </tlogoProperties>\n` +
+      `  <dimension name="GROUP1">\n` +
+      `    <descriptions/>\n` +
+      `  </dimension>${templateElement}\n` +
+      `</adso:dataStore>`;
+  }
+
+  try {
+    await client.create('adso', adsoName, lockHandle, body, {
+      'Development-Class': pkg,
+    });
+  } catch (err) {
+    await client.unlock('adso', adsoName).catch(() => {/* ignore */});
+    throw err;
+  }
+  await client.unlock('adso', adsoName);
+
+  const fromTemplate = templateName ? ` from template ${templateName.toUpperCase()}` : '';
+  return JSON.stringify({
+    success: true,
+    message: `aDSO ${nameUpper} created${fromTemplate} in package ${pkg}. Call bw_activate to activate.`,
+    adso_name: nameUpper,
+    object_type: 'adso',
+  });
+}
+
+/**
+ * bw_update_adso action "add_pure_field" — add one or more pure (non-InfoObject) fields.
+ *
+ * Reuses buildPureFieldElement(). Supports isKey to also inject <keyElement> entries.
+ * Workflow: GET full XML → inject elements + keyElements → Lock → PUT
+ * Returns lockHandle so the caller can invoke bw_activate next.
+ */
+export async function bwUpdateAdsoAddPureField(
+  client: BwClient,
+  adsoName: string,
+  fields: FieldDef[],
+  transport?: string
+): Promise<string> {
+  const adsoUpper = adsoName.toUpperCase();
+  const adsoPath = `/sap/bw/modeling/adso/${adsoName.toLowerCase()}/m`;
+
+  const adsoResult = await client.get(adsoPath, ADSO_ACCEPT);
+  const timestamp = adsoResult.headers['timestamp'] ?? adsoResult.headers['TIMESTAMP'];
+  let xml = adsoResult.body;
+
+  const elementBlocks: string[] = [];
+  const keyElements: string[] = [];
+  const processed: string[] = [];
+  const skipped: string[] = [];
+
+  for (const field of fields) {
+    const name = field.name.trim().toUpperCase();
+    if (xml.includes(`name="${name}"`)) {
+      skipped.push(name);
+      continue;
+    }
+    const apiType = TYPE_NAME_MAP[field.dataType] ?? field.dataType;
+    if (apiType === 'CURR' || apiType === 'QUAN') {
+      const decimalPlaces = field.scale ?? field.precision;
+      if (decimalPlaces === undefined || decimalPlaces <= 0) {
+        throw new Error(
+          `Field ${name}: data type ${field.dataType} requires scale > 0 (decimal places). ` +
+          `Pass e.g. scale: 2 for currency or scale: 3 for quantity.`
+        );
+      }
+    }
+    elementBlocks.push(buildPureFieldElement(field));
+    if (field.isKey) {
+      keyElements.push(`  <keyElement>#///${name}</keyElement>`);
+    }
+    processed.push(name);
+  }
+
+  if (processed.length === 0) {
+    return JSON.stringify({
+      success: false,
+      message: `All fields already present in aDSO ${adsoUpper}. No changes made.`,
+      skipped,
+    });
+  }
+
+  const insertBlock = [...elementBlocks, ...keyElements].join('\n') + '\n';
+  if (xml.includes('</tlogoProperties>')) {
+    xml = xml.replace('</tlogoProperties>', '</tlogoProperties>\n' + insertBlock);
+  } else {
+    xml = xml.replace('</adso:dataStore>', insertBlock + '</adso:dataStore>');
+  }
+
+  const lockHandle = await client.lock('adso', adsoName);
+  try {
+    await client.put('adso', adsoName, lockHandle, xml, timestamp, transport);
+  } catch (err) {
+    await client.unlock('adso', adsoName).catch(() => {/* ignore */});
+    throw err;
+  }
+
+  const result: Record<string, unknown> = {
+    success: true,
+    message: `${processed.length} pure field(s) added to aDSO ${adsoUpper}. Call bw_activate to activate.`,
+    lock_handle: lockHandle,
+    adso_name: adsoUpper,
+    object_type: 'adso',
+    processed,
+  };
+  if (skipped.length > 0) result['skipped'] = skipped;
+  return JSON.stringify(result);
+}
+
+/**
+ * bw_update_adso — add or remove one or more InfoObject fields in an aDSO.
+ *
+ * infoObjectName may be a single name or a comma-separated list (e.g. "NJRSM,NJSTATE").
+ * All fields are applied in one GET → mutate → PUT cycle; Lock/Unlock happen once.
+ *
+ * action "add_field" (default): reads each InfoObject, injects all elements, then PUT.
+ * action "remove_field": removes all matching elements (+ keyElements), then PUT.
+ *
+ * Returns the lockHandle so the caller can invoke bw_activate next.
+ * NOTE: activation (and unlock) is done separately via bw_activate.
+ */
+export async function bwUpdateAdso(
+  client: BwClient,
+  adsoName: string,
+  infoObjectName: string,
+  action: 'add_field' | 'remove_field' = 'add_field',
+  transport?: string
+): Promise<string> {
+  const names = infoObjectName
+    .split(',')
+    .map((n) => n.trim().toUpperCase())
+    .filter(Boolean);
+  const adsoUpper = adsoName.toUpperCase();
+
+  // Read current aDSO once (full XML + timestamp)
+  const adsoPath = `/sap/bw/modeling/adso/${adsoName.toLowerCase()}/m`;
+  const adsoResult = await client.get(adsoPath, ADSO_ACCEPT);
+  const timestamp = adsoResult.headers['timestamp'] ?? adsoResult.headers['TIMESTAMP'];
+
+  let updatedXml = adsoResult.body;
+  const processed: string[] = [];
+  const skipped: string[] = [];
+
+  if (action === 'remove_field') {
+    for (const name of names) {
+      if (!updatedXml.includes(`name="${name}"`)) {
+        skipped.push(name);
+        continue;
+      }
+      updatedXml = removeElement(updatedXml, name);
+      processed.push(name);
+    }
+
+    if (processed.length === 0) {
+      return JSON.stringify({
+        success: false,
+        message: `None of the fields (${names.join(', ')}) found in aDSO ${adsoUpper}. No changes made.`,
+      });
+    }
+  } else {
+    // add_field — read each InfoObject and inject
+    for (const name of names) {
+      if (updatedXml.includes(`infoObjectName="${name}"`)) {
+        skipped.push(name);
+        continue;
+      }
+      const iObjResult = await client.get(
+        `/sap/bw/modeling/iobj/${name.toLowerCase()}/m`,
+        MEDIA_TYPES['iobj']
+      );
+      const iObjProps = parseInfoObjectProps(iObjResult.body);
+      updatedXml = injectElement(updatedXml, buildAdsoElement(name, iObjProps));
+      processed.push(name);
+    }
+
+    if (processed.length === 0) {
+      return JSON.stringify({
+        success: false,
+        message: `All fields (${names.join(', ')}) are already present in aDSO ${adsoUpper}. No changes made.`,
+      });
+    }
+  }
+
+  // Add snapShotScenario attribute if missing (BWMT includes it in PUT requests)
+  if (!updatedXml.includes('snapShotScenario')) {
+    updatedXml = updatedXml.replace(
+      'nextRemodelingVersion="1"',
+      'nextRemodelingVersion="1" snapShotScenario="false"'
+    );
+  }
+
+  // Lock once → PUT → unlock on failure
+  const lockHandle = await client.lock('adso', adsoName);
+  try {
+    await client.put('adso', adsoName, lockHandle, updatedXml, timestamp, transport);
+  } catch (err) {
+    await client.unlock('adso', adsoName).catch(() => {/* ignore unlock error */});
+    throw err;
+  }
+
+  const verb = action === 'remove_field' ? 'removed from' : 'added to';
+  const result: Record<string, unknown> = {
+    success: true,
+    message: `${processed.join(', ')} ${verb} aDSO ${adsoUpper}. Call bw_activate to activate.`,
+    lock_handle: lockHandle,
+    adso_name: adsoUpper,
+    object_type: 'adso',
+    processed,
+  };
+  if (skipped.length > 0) result['skipped'] = skipped;
+  return JSON.stringify(result);
+}
