@@ -303,7 +303,7 @@ Then create a Transformation from ZCRM_ORDERS to the new aDSO and map all fields
 Activate the Transformation. Finally, create a DTP on the Transformation and activate it.
 ```
 
-**Adding derived logic with an AMDP routine and DTP filter:**
+**Adding derived logic with an AMDP routine and DTP filter:** — In Combination with an ADT MCP Server
 ```
 Create a new InfoObject to flag high-value orders above $10,000.
 Choose an appropriate technical name and description.
@@ -328,19 +328,6 @@ and follow their lineage as well.
 Present the result as a structured table with columns:
 Level (1 = closest to ZSLS_ORDSUM), Object Type, Technical Name, Description, Source System.
 Use full object type names — no abbreviations.
-```
-
----
-
-### In Combination with an ADT MCP Server
-
-**AI writes AMDP logic directly into the SAP system:**
-```
-In Transformation ZCRM_T001, there is an AMDP field routine for the field ZVAL_FLAG.
-Read the current SQLScript source of the backing ABAP class via the ADT MCP server.
-The logic needs to be extended: additionally set the flag for orders where the customer
-is in region "EMEA" (field ZCUST_REGION = 'EMEA').
-Update the ABAP class source via ADT, then activate the Transformation via bw-modeling-mcp.
 ```
 
 ---
