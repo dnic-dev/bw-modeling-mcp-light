@@ -69,6 +69,7 @@ This section tracks recent additions and changes. Check back here after updates.
 - Activate BW objects (aDSO, InfoObject, Transformation, DTP)
 - Release locks without activating (discard changes)
 - Delete BW objects
+- Transport request assignment
 
 ---
 
