@@ -54,6 +54,7 @@ This section tracks recent additions and changes. Check back here after updates.
 - Switch runtime between ABAP and AMDP
 
 ### DTP (Data Transfer Process)
+- Read DTP structure and settings
 - Create DTPs
 - Update DTP settings and description
 - Set value filters on fields
