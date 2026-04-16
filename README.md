@@ -274,7 +274,7 @@ Delete a BW object. Works for aDSO, InfoObject, InfoArea, and other types.
 
 ## Example Prompts
 
-> **Fun starter** — this one was actually run by a colleague on a real BW system:
+> **Fun starter** — this one was actually run by a colleague :-)
 ```
 Create a write-interface aDSO to store all match results of the Bundesliga 2024/2025 season.
 Include all relevant fields: matchday, home team, away team, home goals, away goals, match date.
