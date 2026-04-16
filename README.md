@@ -18,7 +18,6 @@ This section tracks recent additions and changes. Check back here after updates.
 ### Search & Discovery
 - Search BW objects by name or description (wildcards supported), filtered by type
 - Where-used / dependency analysis (xref) for any BW object
-- List DTPs dependent on an object or transformation
 
 ### aDSO
 - Read aDSO structure (fields, settings, version state)
