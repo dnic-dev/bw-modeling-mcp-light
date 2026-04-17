@@ -232,7 +232,7 @@ Modify field mappings in an existing Transformation:
 - Set formula rule for a target field (StepFormula)
 
 ### `bw_set_transformation_routine`
-Set a field routine, start routine, or end routine on a Transformation. Supports both ABAP and AMDP (SQLScript). The routine code is written directly via the tool.
+Set a field routine, start routine, or end routine on a Transformation. Supports both ABAP and AMDP (SQLScript). The routine code is written in combination with an ADT MCP server.
 
 ### `bw_delete_transformation_routine`
 Remove an existing routine from a Transformation field.
