@@ -681,6 +681,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
               'Lock handle from bw_update_adso or bw_update_transformation. ' +
               'Use empty string "" for DTP activation.',
           },
+          transport: {
+            type: 'string',
+            description: 'Transport request number. Required on systems with transport obligation.',
+          },
         },
         required: ['object_type', 'object_name', 'lock_handle'],
       },
@@ -1282,7 +1286,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           client,
           args?.object_type as string,
           args?.object_name as string,
-          args?.lock_handle as string
+          args?.lock_handle as string,
+          args?.transport as string | undefined
         );
         break;
 

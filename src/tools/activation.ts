@@ -48,7 +48,8 @@ export async function bwActivate(
   client: BwClient,
   objectType: string,
   objectName: string,
-  lockHandle: string
+  lockHandle: string,
+  corrNr?: string
 ): Promise<string> {
   const typeLower = objectType.toLowerCase();
 
@@ -72,7 +73,7 @@ export async function bwActivate(
   // For trfn, use a fresh SAP session for the activation POST to avoid state
   // pollution from previous requests in the same session.
   const activationClient = typeLower === 'trfn' ? createClientFromEnv() : client;
-  const activationXml = await activationClient.activate(typeLower, objectName, lockHandle);
+  const activationXml = await activationClient.activate(typeLower, objectName, lockHandle, corrNr);
 
   // Step 3: Unlock (skipped for dtpa)
   // Always use the original client session — BW locks are session-bound and can only
@@ -101,7 +102,7 @@ export async function bwActivate(
   );
   if (hasError && hasDeletedRule && typeLower === 'trfn') {
     const retryClient = createClientFromEnv();
-    const retryXml = await retryClient.activate(typeLower, objectName, lockHandle);
+    const retryXml = await retryClient.activate(typeLower, objectName, lockHandle, corrNr);
     if (lockHandle) {
       await client.unlock(typeLower, objectName);
     }
@@ -133,7 +134,7 @@ export async function bwActivate(
   if (hasError && typeLower === 'trfn' && lockHandle) {
     await new Promise((resolve) => setTimeout(resolve, 1000));
     const retryClient = createClientFromEnv();
-    const retryXml = await retryClient.activate(typeLower, objectName, '');
+    const retryXml = await retryClient.activate(typeLower, objectName, '', corrNr);
     // No unlock needed here — retrying with empty lockHandle means the object was not locked
     const retryMessages = parseActivationMessages(retryXml);
     const retryDeactivatedDtps = parseDtpsDeactivated(retryXml);

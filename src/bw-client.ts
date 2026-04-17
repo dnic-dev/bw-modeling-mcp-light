@@ -340,7 +340,7 @@ export class BwClient {
    * Pattern: POST /sap/bw/modeling/activation
    * lockHandle is empty string for DTP activation.
    */
-  async activate(type: string, name: string, lockHandle: string): Promise<string> {
+  async activate(type: string, name: string, lockHandle: string, corrNr?: string): Promise<string> {
     await this.ensureCsrf();
     const mediaType = resolveMediaType(type);
     const nameLower = name.toLowerCase();
@@ -353,7 +353,8 @@ export class BwClient {
     <atom:link href="/sap/bw/modeling/${type.toLowerCase()}/${nameLower}/m" type="application/*" rel="self"/>
   </atom:entry>
 </atom:feed>`;
-    const response = await this.http.post('/sap/bw/modeling/activation', body, {
+    const corrNrParam = corrNr ? `?corrNr=${corrNr}` : '';
+    const response = await this.http.post(`/sap/bw/modeling/activation${corrNrParam}`, body, {
       headers: {
         'Content-Type': 'application/atom+xml;type=entry',
         Accept: 'application/atom+xml;type=feed',
