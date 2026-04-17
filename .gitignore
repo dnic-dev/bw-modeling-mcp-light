@@ -140,3 +140,4 @@ vite.config.ts.timestamp-*
 payloads/
 tests/
 .claude/
+CLAUDE.md

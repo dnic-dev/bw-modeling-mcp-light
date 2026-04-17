@@ -93,6 +93,7 @@ export async function bwGetDtpDetails(client: BwClient, dtpName: string): Promis
 
 interface DtpFilterSelection {
   operator: string;
+  excluding: boolean;
   low: string;
 }
 
@@ -166,10 +167,15 @@ function parseDtpXml(xml: string, status: string): DtpInfo {
     const fieldBody = fm[2];
 
     const selections: DtpFilterSelection[] = [];
-    const selRegex = /<selection[^>]*\boperator="([^"]*)"[^>]*>[\s\S]*?<low[^>]*\bvalue="([^"]*)"[^>]*\/>/g;
+    const selRegex = /<selection\b([^>]*)(?:\/>|>([\s\S]*?)<\/selection>)/g;
     let sm: RegExpExecArray | null;
     while ((sm = selRegex.exec(fieldBody)) !== null) {
-      selections.push({ operator: sm[1], low: sm[2] });
+      const selAttrs = sm[1];
+      const selBody = sm[2] ?? '';
+      const operator = selAttrs.match(/\boperator="([^"]*)"/)?.[1] ?? '';
+      const excluding = selAttrs.includes('excluding="true"');
+      const low = selBody.match(/<low[^>]*\bvalue="([^"]*)"/)?.[1] ?? '';
+      selections.push({ operator, excluding, low });
     }
 
     const hasRoutine = /<routine[\s>]/.test(fieldBody) && !/<routine\s*\/>/.test(fieldBody);
@@ -254,7 +260,9 @@ export async function bwGetDtp(client: BwClient, dtpName: string): Promise<strin
       lines.push(`  [${f.selected ? 'selected' : 'inactive'}] ${f.name} (${f.dtaName})`);
       if (f.selections.length > 0) {
         for (const s of f.selections) {
-          lines.push(`    → ${s.operator}: "${s.low}"`);
+          const sign = s.excluding ? '≠' : '=';
+          const val = s.low === '' ? "''" : `"${s.low}"`;
+          lines.push(`    → ${s.operator} ${sign} ${val}`);
         }
       }
       if (f.hasRoutine) {
@@ -486,6 +494,7 @@ export interface UpdateDtpArgs {
   filter_dta_name?: string;
   filter_value?: string;
   filter_excluding?: boolean;
+  filter_clear_fields?: string;
   transport?: string;
   transport_lock_holder?: string;
 }
@@ -518,32 +527,57 @@ export async function bwUpdateDtp(
       `$1"${args.description}"`
     );
   }
-  if (args.filter_field && args.filter_value) {
+  if (args.filter_field && args.filter_value !== undefined) {
     const excluding = args.filter_excluding ? 'true' : 'false';
-    const values = args.filter_value.split(',').map((v) => v.trim()).filter(Boolean);
+    // Preserve empty string (= '' filter) — do not filter(Boolean); deduplicate via Set
+    const values = [...new Set(args.filter_value.split(',').map((v) => v.trim()))];
+    // Empty string → self-closing <selection> (no <low>); non-empty → <low value="..."/>
     const selectionsXml = values
-      .map((v) => `<selection excluding="${excluding}" operator="Equal">\n        <low description="${v}" value="${v}"/>\n      </selection>`)
+      .map((v) => v === ''
+        ? `<selection excluding="${excluding}" operator="Equal"/>`
+        : `<selection excluding="${excluding}" operator="Equal">\n        <low description="${v}" value="${v}"/>\n      </selection>`)
       .join('\n      ') + '\n      ';
     // 1. Mark field as selected
     putXml = putXml.replace(
       new RegExp(`(<fields[^>]*\\bname="${args.filter_field}"(?![^>]*\\bselected="true")[^>]*)(>)`),
       `$1 selected="true"$2`
     );
-    // 2. Remove any existing <selection> elements before <infoObject> in the matching fields block
+    // 2. Remove any existing <selection> elements
     putXml = putXml.replace(
-      new RegExp(`(<fields[^>]*\\bname="${args.filter_field}"[^>]*>)(<selection[^>]*>[\\s\\S]*?<\\/selection>\\s*)+(<infoObject)`),
-      '$1$3'
+      new RegExp(`(<fields[^>]*\\bname="${args.filter_field}"[^>]*>)(<selection[^\\s/>][^>]*>[\\s\\S]*?<\\/selection>|<selection[^>]*\\/?>)\\s*(?=<(?:infoObject|operators))`,'g'),
+      '$1'
     );
     // 3. Remove <routine/> if already present (to avoid duplicates)
     putXml = putXml.replace(
       new RegExp(`(<fields[^>]*\\bname="${args.filter_field}"[^>]*>)<routine\\/>`),
       '$1'
     );
-    // 4. Insert <routine/> + selections before <infoObject>
+    // 4. Insert <routine/> + selections before <infoObject> (InfoObject fields) or <operators> (plain fields)
     putXml = putXml.replace(
-      new RegExp(`(<fields[^>]*\\bname="${args.filter_field}"[^>]*>)(<infoObject)`),
+      new RegExp(`(<fields[^>]*\\bname="${args.filter_field}"[^>]*>)(<(?:infoObject|operators))`),
       `$1<routine/>\n      ${selectionsXml}$2`
     );
+  }
+
+  if (args.filter_clear_fields) {
+    const fieldsToClear = args.filter_clear_fields.split(',').map((f) => f.trim()).filter(Boolean);
+    for (const fieldName of fieldsToClear) {
+      // Remove selected="true"
+      putXml = putXml.replace(
+        new RegExp(`(<fields[^>]*\\bname="${fieldName}"[^>]*)\\s+selected="true"`),
+        '$1'
+      );
+      // Remove all <selection> elements (self-closing and with body)
+      putXml = putXml.replace(
+        new RegExp(`(<fields[^>]*\\bname="${fieldName}"[^>]*>)([\\s\\S]*?)(<\\/fields>)`, 'g'),
+        (_match, open, body, close) => {
+          const cleaned = body
+            .replace(/<selection\b[^>]*\/>/g, '')
+            .replace(/<selection\b[^>]*>[\s\S]*?<\/selection>/g, '');
+          return open + cleaned + close;
+        }
+      );
+    }
   }
 
   // PUT on a fresh stateless client — Eclipse uses a separate stateless session for PUT

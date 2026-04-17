@@ -936,11 +936,11 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           },
           filter_field: {
             type: 'string',
-            description: 'Field name to filter on (e.g. "PLAYLIST_ID"). Requires filter_dta_name and filter_value.',
+            description: 'Field name to filter on. Requires filter_dta_name and filter_value.',
           },
           filter_dta_name: {
             type: 'string',
-            description: 'Internal dtaName for the filter field (e.g. "4NLSPOTIFY-PLAYLIST_ID").',
+            description: 'Internal dtaName for the filter field.',
           },
           filter_value: {
             type: 'string',
@@ -963,7 +963,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           },
           field_name: {
             type: 'string',
-            description: 'Filter field name as it appears in the DTP XML fields element (e.g. "PLAYLIST_ID").',
+            description: 'Filter field name as it appears in the DTP XML fields element.',
           },
           routine_code: {
             type: 'string',
@@ -994,11 +994,11 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           },
           filter_field: {
             type: 'string',
-            description: 'Field name to filter on (e.g. "PLAYLIST_ID"). Requires filter_value.',
+            description: 'Field name to filter on. Requires filter_value.',
           },
           filter_dta_name: {
             type: 'string',
-            description: 'Internal dtaName for the filter field (e.g. "4NLSPOTIFY-PLAYLIST_ID"). Reserved for future use.',
+            description: 'Internal dtaName for the filter field. Reserved for future use.',
           },
           filter_value: {
             type: 'string',
@@ -1007,6 +1007,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           filter_excluding: {
             type: 'boolean',
             description: 'If true, the filter excludes the given values (excluding="true"). Default false (inclusive).',
+          },
+          filter_clear_fields: {
+            type: 'string',
+            description: 'Comma-separated list of field names whose filter selections should be removed entirely.',
           },
           transport: {
             type: 'string',
@@ -1411,6 +1415,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           filter_dta_name: args?.filter_dta_name as string | undefined,
           filter_value: args?.filter_value as string | undefined,
           filter_excluding: args?.filter_excluding as boolean | undefined,
+          filter_clear_fields: args?.filter_clear_fields as string | undefined,
           transport: args?.transport as string | undefined,
           transport_lock_holder: args?.transport_lock_holder as string | undefined,
         });
