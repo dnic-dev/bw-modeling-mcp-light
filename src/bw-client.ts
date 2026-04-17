@@ -179,6 +179,7 @@ export class BwClient {
           'bwmt-level': '50',
           'X-CSRF-Token': this.csrfToken!,
           ...this.cookieHeaders(),
+          ...(sessionType ? { 'X-sap-adt-sessiontype': sessionType } : {}),
           ...extraHeaders,
         };
     const response = await this.http.post(
@@ -249,7 +250,8 @@ export class BwClient {
     lockHandle: string,
     body: string,
     timestamp?: string,
-    corrNr?: string
+    corrNr?: string,
+    transportLockHolder?: string
   ): Promise<string> {
     await this.ensureCsrf();
     const mediaType = resolveMediaType(type);
@@ -262,6 +264,7 @@ export class BwClient {
         'X-CSRF-Token': this.csrfToken!,
         ...this.cookieHeaders(),
         ...(timestamp ? { timestamp } : {}),
+        ...(transportLockHolder ? { 'Transport-Lock-Holder': transportLockHolder } : {}),
       },
       responseType: 'text',
     });

@@ -285,6 +285,7 @@ export async function bwGetDtp(client: BwClient, dtpName: string): Promise<strin
 
 export interface CreateDtpArgs {
   trfn_name: string;
+  trfn_name_2?: string;
   source_name: string;
   source_type: string;
   target_name: string;
@@ -375,7 +376,7 @@ export async function bwCreateDtp(
       adtcore:responsible="${responsible}"/>
   </generalInformation>
   <overview>
-    <object xsi:type="Dtpa:DTPObject" name="${trfnName}" tlogo="TRFN"/>
+    <object xsi:type="Dtpa:DTPObject" name="${trfnName}" tlogo="TRFN"/>${args.trfn_name_2 ? `\n    <object xsi:type="Dtpa:DTPObject" name="${args.trfn_name_2.toUpperCase()}" tlogo="TRFN"/>` : ''}
   </overview>
   <source name="${srcName}" tlogo="${srcType}" type="${srcType}"/>
   <target name="${tgtName}" tlogo="${tgtType}" type="${tgtType}"/>
@@ -484,6 +485,9 @@ export interface UpdateDtpArgs {
   filter_field?: string;
   filter_dta_name?: string;
   filter_value?: string;
+  filter_excluding?: boolean;
+  transport?: string;
+  transport_lock_holder?: string;
 }
 
 /**
@@ -498,20 +502,8 @@ export async function bwUpdateDtp(
   const dtpName  = args.dtp_name.toUpperCase();
   const dtpLower = args.dtp_name.toLowerCase();
 
-  // Lock (no CREA)
-  const csrfToken = await client.getCsrfToken();
-  const lockResponse = await client.rawPost(
-    `/sap/bw/modeling/dtpa/${dtpLower}?action=lock`,
-    '',
-    {
-      'Accept': MEDIA_TYPES['dtpa'],
-      'x-csrf-token': csrfToken,
-    }
-  );
-  const lockHandle = lockResponse.body.match(/<LOCK_HANDLE>([^<]+)<\/LOCK_HANDLE>/)?.[1] ?? '';
-  if (!lockHandle) {
-    throw new Error(`No <LOCK_HANDLE> in lock response:\n${lockResponse.body}`);
-  }
+  // Lock (stateful_enqueue — same pattern as bwUpdateInfoObject)
+  const lockHandle = await client.lock('dtpa', dtpLower, {}, 'stateful_enqueue');
 
   // GET current DTP XML (fresh client) — read timestamp
   const getClient = createClientFromEnv();
@@ -527,25 +519,39 @@ export async function bwUpdateDtp(
     );
   }
   if (args.filter_field && args.filter_value) {
-    const selectionXml = `<selection excluding="false" operator="Equal">\n        <low description="${args.filter_value}" value="${args.filter_value}"/>\n      </selection>\n      `;
-    // Remove existing selection if present
+    const excluding = args.filter_excluding ? 'true' : 'false';
+    const values = args.filter_value.split(',').map((v) => v.trim()).filter(Boolean);
+    const selectionsXml = values
+      .map((v) => `<selection excluding="${excluding}" operator="Equal">\n        <low description="${v}" value="${v}"/>\n      </selection>`)
+      .join('\n      ') + '\n      ';
+    // 1. Mark field as selected
     putXml = putXml.replace(
-      new RegExp(`(<fields[^>]*\\bname="${args.filter_field}"[^>]*>[\\s\\S]*?)<selection[^>]*>[\\s\\S]*?</selection>\\s*`),
+      new RegExp(`(<fields[^>]*\\bname="${args.filter_field}"(?![^>]*\\bselected="true")[^>]*)(>)`),
+      `$1 selected="true"$2`
+    );
+    // 2. Remove any existing <selection> elements before <infoObject> in the matching fields block
+    putXml = putXml.replace(
+      new RegExp(`(<fields[^>]*\\bname="${args.filter_field}"[^>]*>)(<selection[^>]*>[\\s\\S]*?<\\/selection>\\s*)+(<infoObject)`),
+      '$1$3'
+    );
+    // 3. Remove <routine/> if already present (to avoid duplicates)
+    putXml = putXml.replace(
+      new RegExp(`(<fields[^>]*\\bname="${args.filter_field}"[^>]*>)<routine\\/>`),
       '$1'
     );
-    // Insert selection before first <operators> in the matching fields block
+    // 4. Insert <routine/> + selections before <infoObject>
     putXml = putXml.replace(
-      new RegExp(`(<fields[^>]*\\bname="${args.filter_field}"[^>]*>[\\s\\S]*?)(<operators)`),
-      `$1${selectionXml}$2`
+      new RegExp(`(<fields[^>]*\\bname="${args.filter_field}"[^>]*>)(<infoObject)`),
+      `$1<routine/>\n      ${selectionsXml}$2`
     );
   }
 
-  // PUT with fresh client
+  // PUT on a fresh stateless client — Eclipse uses a separate stateless session for PUT
   const putClient = createClientFromEnv();
-  await putClient.put('dtpa', dtpName, lockHandle, putXml, timestamp);
+  await putClient.put('dtpa', dtpName, lockHandle, putXml, timestamp, args.transport, args.transport_lock_holder);
 
   // Activate — handles unlock
-  await bwActivate(client, 'dtpa', dtpName, lockHandle);
+  await bwActivate(client, 'dtpa', dtpName, lockHandle, args.transport);
 
   return JSON.stringify({
     success: true,

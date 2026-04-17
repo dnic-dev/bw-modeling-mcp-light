@@ -906,6 +906,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
             type: 'string',
             description: 'Technical name of the existing Transformation (UUID-like key).',
           },
+          trfn_name_2: {
+            type: 'string',
+            description: 'Optional second transformation in a multi-step chain. Include when the DTP spans two transformations (e.g. ADSO→TRCS→ADSO).',
+          },
           source_name: {
             type: 'string',
             description: 'Source object name (e.g. "NLSPOTIFY").',
@@ -998,7 +1002,19 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           },
           filter_value: {
             type: 'string',
-            description: 'Filter value for the Equal selection (e.g. "PL_001").',
+            description: 'Filter value(s) for the selection. Comma-separated for multiple values (e.g. "VAL1,VAL2").',
+          },
+          filter_excluding: {
+            type: 'boolean',
+            description: 'If true, the filter excludes the given values (excluding="true"). Default false (inclusive).',
+          },
+          transport: {
+            type: 'string',
+            description: 'Transport request number. Required on systems with transport obligation.',
+          },
+          transport_lock_holder: {
+            type: 'string',
+            description: 'Transport lock holder. The transport request that currently owns the object lock. Required on some systems when updating an existing object.',
           },
         },
         required: ['dtp_name'],
@@ -1365,6 +1381,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case 'bw_create_dtp':
         text = await bwCreateDtp(client, {
           trfn_name: args?.trfn_name as string,
+          trfn_name_2: args?.trfn_name_2 as string | undefined,
           source_name: args?.source_name as string,
           source_type: args?.source_type as string,
           target_name: args?.target_name as string,
@@ -1393,6 +1410,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           filter_field: args?.filter_field as string | undefined,
           filter_dta_name: args?.filter_dta_name as string | undefined,
           filter_value: args?.filter_value as string | undefined,
+          filter_excluding: args?.filter_excluding as boolean | undefined,
+          transport: args?.transport as string | undefined,
+          transport_lock_holder: args?.transport_lock_holder as string | undefined,
         });
         break;
 
