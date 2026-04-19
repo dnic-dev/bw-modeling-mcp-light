@@ -74,18 +74,15 @@ New tool: `bw_get_query` — read any BW Query from your system and get a fully 
 - Set routine filters (ABAP code)
 
 ### BW Query (Read)
-- Read a BW Query definition — full structured breakdown
-- Variables with type, processing type (UserEntry, Authorization, CustomerExit), and input behavior
-- Filter area with fixed values, variable references, and mixed selections fully resolved
-- Layout: rows, columns, free characteristics — Dimensions and key figure structures (CustomDimensions)
-- Full member lists for key figure structures including nested members
-- Calculated key figures with recursively resolved, human-readable formulas
-- Restricted key figures with selection conditions (key figure restrictions + characteristic restrictions)
-- Inline local measures inside structures — both formulas and selections
-- Exceptions with alert levels and thresholds
-- Cell definitions for grid layout queries
-- Query-level settings (zero suppression, planning mode, RFC/OData flags)
-- Active version with automatic fallback to inactive version
+- Read a BW Query — metadata, variables, filter, layout, measures, exceptions, and settings
+- Variables: type, processing type (UserEntry, Authorization, CustomerExit), input behavior
+- Filter: fixed values and variable references fully resolved, including mixed selections
+- Layout: rows, columns, free characteristics with full member lists and nested members
+- Calculated key figures: recursively resolved human-readable formulas
+- Restricted key figures: selection conditions (key figure + characteristic restrictions)
+- Inline local measures inside structures: both formulas and selections
+- Exceptions with alert levels and thresholds, cell definitions for grid layout queries
+- Active version with automatic fallback to inactive
 
 ### Push API
 - Get JSON push schema for a write-interface aDSO
@@ -289,7 +286,7 @@ Get the expected JSON schema for pushing data into a write-interface aDSO.
 Push a JSON record array directly into a write-interface aDSO via the BW Push API (`/sap/bw4/v1/push/`).
 
 ### `bw_get_query` _(Read only)_
-Read a BW Query definition. Returns a fully structured breakdown including: all variables with type and input behavior, filter area with fixed values and variable references resolved, layout (rows, columns, free characteristics) with full member lists for key figure structures, calculated key figures with recursively resolved human-readable formulas, restricted key figures with selection conditions, inline local measures inside structures, exceptions with alert levels and thresholds, cell definitions for grid layout queries, and query-level settings. Tries the active version first — falls back to the inactive version automatically. Create and modify operations for BW Queries are not yet supported.
+Read a BW Query definition — variables, filter logic (fixed values and variable references resolved), layout with full member lists, calculated key figures with recursively resolved formulas, restricted key figures with selection conditions, exceptions, and query settings.
 
 ### `bw_activate`
 Activate one or more BW objects. Handles impact analysis and automatically deactivated DTPs. Supports: `adso`, `iobj`, `trfn`, `dtp`.
