@@ -116,9 +116,10 @@ src/
     ├── infosource.ts     # bw_get_infosource, bw_create_infosource, bw_update_infosource
     ├── push.ts           # bw_push_data, bw_get_push_schema
     ├── search.ts         # bw_search, bw_xref
-    └── transformation.ts # bw_get_transformation, bw_create_transformation,
-                          # bw_update_transformation, bw_set_transformation_routine,
-                          # bw_delete_transformation_routine, bw_set_transformation_runtime
+    ├── transformation.ts # bw_get_transformation, bw_create_transformation,
+    │                     # bw_update_transformation, bw_set_transformation_routine,
+    │                     # bw_delete_transformation_routine, bw_set_transformation_runtime
+    └── query.ts          # bw_get_query
 ```
 
 ---
