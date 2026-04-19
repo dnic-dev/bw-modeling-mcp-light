@@ -8,7 +8,22 @@ A Model Context Protocol (MCP) server that enables AI assistants like Claude to 
 
 ## 🆕 What's New
 
-This section tracks recent additions and changes. Check back here after updates.
+v0.2.0 — BW Query Read Support
+
+New tool: `bw_get_query` — read any BW Query from your system and get a fully structured, human-readable breakdown:
+
+- Complete metadata (InfoProvider, package, InfoArea, responsible, timestamps)
+- All variables with type, input behavior, and processing type
+- Filter area with fixed values and variable references fully resolved
+- Layout: rows, columns, free characteristics — including full member lists for key figure structures
+- Calculated key figures with recursively resolved, human-readable formulas
+- Restricted key figures with their selection conditions (key figure + characteristic restrictions)
+- Inline (local) calculated and restricted key figures inside structures — not just a count
+- Exceptions with thresholds and alert levels
+- Cell definitions (grid layout queries)
+- Query settings (zero suppression, planning mode, RFC/OData flags)
+- Version fallback: active → inactive if no active version exists
+
 > **Work in Progress** — bw-modeling-mcp already covers many typical BW development and analysis scenarios, but not everything yet. More is coming. The server has so far only been tested on our own demo systems — if you are running it against your own BW/4HANA system, feedback and bug reports are very welcome. Please use the [Issue templates](https://github.com/dnic-dev/bw-modeling-mcp/issues/new/choose) — you will be helping shape what gets built next.
 
 ---
@@ -353,7 +368,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the full technical architecture and c
 
 - **BW on HANA support** — extend compatibility to SAP BW 7.5 on HANA. Support will be ⚠️ Partial — not all REST endpoints available in BW/4HANA exist in BW on HANA, so some tools may not be available or behave differently.
 - **CompositeProvider** — create and manage CompositeProviders
-- **BW Queries** — create and modify BW Queries, variables, restricted/calculated key figures
+- **BW Queries** — Read: `bw_get_query` ✅ — Create and modify: planned
 - **Process Chains** — build and manage Process Chains
 - **Open ODS View** — create Open ODS Views
 - **Further BW/4HANA objects** — BW/4HANA Cockpit functions and additional modeling objects

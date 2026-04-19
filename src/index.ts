@@ -18,6 +18,7 @@ import { bwDelete } from './tools/delete.js';
 import { bwCreateInfoArea, bwMoveObject, bwGetInfoarea } from './tools/infoarea.js';
 import { bwCreateInfosource, bwUpdateInfosource, bwGetInfosource, InfosourceField } from './tools/infosource.js';
 import { bwPushData, bwGetPushSchema } from './tools/push.js';
+import { bwGetQuery } from './tools/query.js';
 
 // Single shared client instance (CSRF token + session cookies are reused)
 const client = createClientFromEnv();
@@ -1070,6 +1071,23 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         required: ['adso_name', 'records'],
       },
     },
+    {
+      name: 'bw_get_query',
+      description:
+        'Read a BW Query definition — variables, filter, layout (rows/columns/free characteristics), ' +
+        'calculated and restricted measures, exceptions, and cell definitions. ' +
+        'Tries the active version first; falls back to the inactive version if not found.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          query_name: {
+            type: 'string',
+            description: 'Technical name of the query (e.g. "QUERY_NAME").',
+          },
+        },
+        required: ['query_name'],
+      },
+    },
   ],
 }));
 
@@ -1431,6 +1449,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           args?.records as object[],
           (args?.mode as string) ?? 'one_step'
         );
+        break;
+
+      case 'bw_get_query':
+        text = await bwGetQuery(args?.query_name as string);
         break;
 
       default:
