@@ -8,8 +8,6 @@ A Model Context Protocol (MCP) server that enables AI assistants like Claude to 
 
 ## 🆕 What's New
 
-v0.2.0 — BW Query Read Support
-
 New tool: `bw_get_query` — read any BW Query from your system and get a fully structured, human-readable breakdown:
 
 - Complete metadata (InfoProvider, package, InfoArea, responsible, timestamps)
