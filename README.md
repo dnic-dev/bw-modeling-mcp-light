@@ -16,7 +16,7 @@ New tool: `bw_get_query` — read any BW Query from your system and get a fully 
 - Layout: rows, columns, free characteristics — including full member lists for key figure structures
 - Calculated key figures with recursively resolved, human-readable formulas
 - Restricted key figures with their selection conditions (key figure + characteristic restrictions)
-- Inline (local) calculated and restricted key figures inside structures — not just a count
+- Inline (local) calculated and restricted key figures inside structures
 - Exceptions with thresholds and alert levels
 - Cell definitions (grid layout queries)
 - Query settings (zero suppression, planning mode, RFC/OData flags)
