@@ -61,12 +61,16 @@ export async function bwActivate(
     });
   }
 
-  // Step 1: For trfn, GET the transformation in a fresh session to trigger SAP's internal
-  // HANA cache refresh. This mirrors Eclipse's behavior where the GET and the activation
-  // POST run in different sessions.
-  if (typeLower === 'trfn') {
+  // Step 1: For trfn/dtpa, GET the object in a fresh session to trigger SAP's internal
+  // HANA cache refresh. This mirrors Eclipse's behavior where GET and activation POST
+  // run in different sessions (Eclipse always GETs before activating).
+  if (typeLower === 'trfn' || typeLower === 'dtpa') {
     const freshClient = createClientFromEnv();
-    await freshClient.get(`/sap/bw/modeling/trfn/${objectName.toLowerCase()}/m`, MEDIA_TYPES['trfn']);
+    const mediaKey = typeLower as keyof typeof MEDIA_TYPES;
+    await freshClient.get(
+      `/sap/bw/modeling/${typeLower}/${objectName.toLowerCase()}/m`,
+      MEDIA_TYPES[mediaKey]
+    );
   }
 
   // Step 2: Activate

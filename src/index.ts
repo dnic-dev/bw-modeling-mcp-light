@@ -573,6 +573,14 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
             enum: ['IOBJ', 'ADSO'],
             description: 'Type of the lookup object. "IOBJ" for InfoObject, "ADSO" for aDSO. Required for rule_type="lookup".',
           },
+          additional_source_fields: {
+            type: 'array',
+            items: { type: 'string' },
+            description:
+              'Additional source fields for rule_type="formula" when the formula references more than one source field. ' +
+              'Combined with source_field, all listed fields are registered as inputs on the StepFormula rule. ' +
+              'Example: ["QUANTITY_SOLD", "COST_PER_UNIT"].',
+          },
           transport: {
             type: 'string',
             description: 'Transport request number (e.g. DEVK900123). Only required if the BW system requires transport assignment.',
@@ -1290,6 +1298,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           args?.lookup_object as string | undefined,
           args?.lookup_object_type as string | undefined,
           args?.transport as string | undefined,
+          args?.additional_source_fields as string[] | undefined,
         );
         break;
 
