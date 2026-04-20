@@ -360,29 +360,29 @@ function summarizeTransformation(
 
 /**
  * Extract source field properties from the transformation's <source><segment> section.
+ * Returns the full element XML block (to be reused verbatim in formula input elements).
  */
 function extractSourceFieldProps(
   xml: string,
   fieldName: string
-): { dataType: string; length: string } {
-  // Match the first <source> > <segment> block
+): { dataType: string; length: string; elementXml: string } {
   const srcSegMatch = xml.match(/<source\b[^>]*>[\s\S]*?<segment[^>]*>([\s\S]*?)<\/segment>/);
-  if (!srcSegMatch) return { dataType: 'CHAR', length: '20' };
+  if (!srcSegMatch) return { dataType: 'CHAR', length: '20', elementXml: '' };
 
   const segContent = srcSegMatch[1];
-  // Find the element with the matching name
   const elemRegex = new RegExp(
     `<element\\b[^>]*name="${fieldName.toUpperCase()}"[^>]*>([\\s\\S]*?)<\\/element>`
   );
   const elemMatch = segContent.match(elemRegex);
-  if (!elemMatch) return { dataType: 'CHAR', length: '20' };
+  if (!elemMatch) return { dataType: 'CHAR', length: '20', elementXml: '' };
 
-  const inlineMatch = elemMatch[1].match(
-    /<inlineType[^>]*name="([^"]+)"[^>]*length="([^"]+)"/
-  );
+  const body = elemMatch[1];
+  // Try length first, fall back to precision (DEC fields use precision+scale, no length)
+  const inlineMatch = body.match(/<inlineType[^>]*name="([^"]+)"[^>]*(?:length="([^"]+)"|precision="([^"]+)")/);
   return {
     dataType: inlineMatch?.[1] ?? 'CHAR',
-    length: inlineMatch?.[2] ?? '20',
+    length: inlineMatch?.[2] ?? inlineMatch?.[3] ?? '20',
+    elementXml: elemMatch[0],
   };
 }
 
@@ -557,48 +557,56 @@ function convertDirectOrInitialRuleToFormula(ruleXml: string, formula: string): 
 
 /**
  * Build a StepFormula rule from a StepNoUpdate rule.
- * Reuses the existing step output element and adds a new source input element.
+ * Supports multiple source fields for multi-field formula expressions.
+ * Reuses the full element XML from the source segment verbatim (adds xsi:type only).
  */
 function buildNoUpdateToFormulaRule(
   ruleXml: string,
   groupId: string,
   ruleId: string,
   targetInfoObject: string,
-  sourceField: string,
-  srcType: string,
-  srcLength: string,
+  sourceFields: Array<{ name: string; dataType: string; length: string; elementXml: string }>,
   formula: string,
 ): string {
-  // Extract the step <output> block — its content stays unchanged
   const stepMatch = ruleXml.match(/<step\b[^>]*>([\s\S]*?)<\/step>/);
   if (!stepMatch) throw new Error('Cannot parse step from StepNoUpdate rule');
   const stepOutputBlock = stepMatch[1].trim();
 
-  const src = sourceField.toUpperCase();
   const tgt = targetInfoObject.toUpperCase();
   const g = groupId;
   const rv = ruleId;
 
+  const sourceTags = sourceFields
+    .map(
+      (sf, i) =>
+        `<source id="${i + 1}">\n        <input>#///group${g}/rule${rv}/step2/input${i + 1}</input>\n        <elementRef>#///source/segment1/${sf.name}</elementRef>\n      </source>`,
+    )
+    .join('\n      ');
+
+  const inputTags = sourceFields
+    .map((sf, i) => {
+      // Clone element XML from source segment, inject xsi:type="trfn:TransformationElement"
+      const elemXml = sf.elementXml
+        ? sf.elementXml.replace(/^<element\b/, '<element xsi:type="trfn:TransformationElement"')
+        : `<element xsi:type="trfn:TransformationElement" name="${sf.name}">
+            <endUserTexts label="${sf.name}"/>
+            <inlineType name="${sf.dataType}" length="${sf.length}" semanticType="empty"/>
+            <localProperties xsi:type="BwCore:LocalCharacteristicProperties"/>
+            <associationType>1</associationType>
+            <associationValid>false</associationValid>
+          </element>`;
+      return `<input id="${i + 1}">\n          <output>#///group${g}/rule${rv}/source${i + 1}</output>\n          ${elemXml}\n        </input>`;
+    })
+    .join('\n        ');
+
   return `<rule id="${rv}" description="">
-      <source id="1">
-        <input>#///group${g}/rule${rv}/step2/input1</input>
-        <elementRef>#///source/segment1/${src}</elementRef>
-      </source>
+      ${sourceTags}
       <target id="1" performConversionExit="NOT_SUPPORTED">
         <output>#///group${g}/rule${rv}/step2/output1</output>
         <elementRef>#///target/segment1/${tgt}</elementRef>
       </target>
       <step xsi:type="trfn:StepFormula" id="2" rank="MAIN" type="FORMULA" formula="${escapeXmlAttr(formula)}">
-        <input id="1">
-          <output>#///group${g}/rule${rv}/source1</output>
-          <element name="${src}">
-            <endUserTexts label="${src}"/>
-            <inlineType name="${srcType}" length="${srcLength}" semanticType="empty"/>
-            <localProperties xsi:type="BwCore:LocalCharacteristicProperties"/>
-            <associationType>1</associationType>
-            <associationValid>false</associationValid>
-          </element>
-        </input>
+        ${inputTags}
         ${stepOutputBlock}
       </step>
     </rule>`;
@@ -858,6 +866,7 @@ export async function bwUpdateTransformation(
   lookupObject?: string,
   lookupObjectType?: string,
   transport?: string,
+  additionalSourceFields?: string[],
 ): Promise<string> {
   const tgtUpper = targetInfoObject.toUpperCase();
   let srcUpper = sourceField?.toUpperCase() ?? '';
@@ -968,15 +977,17 @@ export async function bwUpdateTransformation(
             `(target InfoObject ${tgtUpper} has no source mapping yet).`,
         });
       }
-      const srcProps = extractSourceFieldProps(originalXml, srcUpper);
+      const allSourceFields = [srcUpper, ...(additionalSourceFields ?? []).map(f => f.toUpperCase())];
+      const srcFieldDefs = allSourceFields.map(f => {
+        const props = extractSourceFieldProps(originalXml, f);
+        return { name: f, dataType: props.dataType, length: props.length, elementXml: props.elementXml };
+      });
       newRule = buildNoUpdateToFormulaRule(
         ruleInfo.oldRuleXml,
         ruleInfo.groupId,
         ruleInfo.ruleId,
         tgtUpper,
-        srcUpper,
-        srcProps.dataType,
-        srcProps.length,
+        srcFieldDefs,
         formula,
       );
     } else {
