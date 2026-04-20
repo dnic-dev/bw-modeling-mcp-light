@@ -495,6 +495,11 @@ function buildPureFieldElement(field: FieldDef): string {
     inlineAttrs.push('length="0"');
     const decimalPlaces = field.scale ?? field.precision;
     if (decimalPlaces !== undefined) inlineAttrs.push(`precision="${decimalPlaces}"`);
+  } else if (apiType === 'DEC') {
+    // DEC: XML length = total digits (precision param), XML precision = decimal places (scale param)
+    const totalDigits = field.precision ?? field.length;
+    if (totalDigits !== undefined) inlineAttrs.push(`length="${totalDigits}"`);
+    if (field.scale !== undefined) inlineAttrs.push(`precision="${field.scale}"`);
   } else if (apiType === 'D16D' || apiType === 'D34D') {
     // Decimal float: length=0, user-defined precision
     inlineAttrs.push('length="0"');
@@ -502,10 +507,9 @@ function buildPureFieldElement(field: FieldDef): string {
   } else if (apiType === 'RSTR' || apiType === 'STRG') {
     // No length attribute for RSTR/STRG
   } else {
-    // User-defined: CHAR, NUMC, SSTR, RAW, DEC etc.
+    // User-defined: CHAR, NUMC, SSTR, RAW etc.
     if (field.length !== undefined) inlineAttrs.push(`length="${field.length}"`);
     if (field.precision !== undefined) inlineAttrs.push(`precision="${field.precision}"`);
-    // scale omitted
   }
 
   const semanticType = SEMANTIC_TYPE[apiType] ?? 'empty';
