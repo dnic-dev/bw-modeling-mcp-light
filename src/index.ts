@@ -907,7 +907,13 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         'Create a new DTP (Data Transfer Process) for an existing Transformation and activate it. ' +
         'The DTP name is server-generated. ' +
         'Optionally set a filter on one source field (Equal operator). ' +
-        'After creation the DTP is activated automatically.',
+        'After creation the DTP is activated automatically. ' +
+        'IMPORTANT: Before calling this tool, always check the full transformation chain. ' +
+        'Single-step chain (e.g. ADSO->ADSO): use trfn_name only. ' +
+        'Two-step chain (e.g. ADSO->TRCS->ADSO): use trfn_name for the first transformation and trfn_name_2 for the second; ' +
+        'source_name/source_type = the start object, target_name/target_type = the end object. ' +
+        'Omitting trfn_name_2 in a two-step chain causes a persistent HTTP 500 error. ' +
+        'Use bw_get_transformation or bw_xref to determine the chain before creating the DTP.',
       inputSchema: {
         type: 'object',
         properties: {
