@@ -8,8 +8,9 @@ const typePresets: Record<string, Record<string, boolean>> = {
     activateData: true,
     cubeDeltaOnly: false,
     directUpdate: false,
-    isReportingObject: false,
+    isReportingObject: true,
     noAqDeletion: false,
+    writeChangelog: true,
   },
   staging_inbound_only: {
     activateData: true,
