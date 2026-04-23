@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="de" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BW Exporter</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+  <style>
+    body { padding: 2rem; }
+    .status-badge {
+      display: inline-block;
+      padding: 0.15em 0.5em;
+      border-radius: 4px;
+      font-size: 0.8em;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .status-active   { background: #d1fae5; color: #065f46; }
+    .status-inactive { background: #fef3c7; color: #92400e; }
+    .status-unknown  { background: #f3f4f6; color: #6b7280; }
+    .type-badge {
+      display: inline-block;
+      padding: 0.15em 0.5em;
+      border-radius: 4px;
+      font-size: 0.8em;
+      background: #e0e7ff;
+      color: #3730a3;
+      font-family: monospace;
+    }
+    table { font-size: 0.9em; }
+    .export-bar {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-top: 1rem;
+    }
+    .select-all-row { font-size: 0.85em; color: #6b7280; }
+    .result-count { color: #6b7280; font-size: 0.9em; margin-bottom: 0.5rem; }
+    header { margin-bottom: 2rem; }
+    .connection-info { font-size: 0.9em; color: #6b7280; }
+  </style>
+</head>
+<body>
+  <header>
+    <h2>SAP BW Exporter</h2>
+    {% if connected %}
+      <p class="connection-info">
+        Verbunden mit <strong>{{ creds.url }}</strong>
+        (Mandant {{ creds.client }}{% if creds.language %}, Sprache {{ creds.language }}{% endif %})
+        &nbsp;·&nbsp;
+        <a href="/disconnect">Trennen</a>
+      </p>
+    {% endif %}
+  </header>
+
+  {% if error %}
+    <article style="background:#fef2f2; border-left: 4px solid #ef4444; padding: 1rem; margin-bottom: 1rem;">
+      <strong>Fehler:</strong> {{ error }}
+    </article>
+  {% endif %}
+
+  {% if not connected %}
+    <!-- ─── Connection form ─── -->
+    <article style="max-width: 480px; margin: 0 auto;">
+      <h3>BW-Verbindung</h3>
+      <form method="post" action="/connect">
+        <label>
+          BW System URL
+          <input type="url" name="url" placeholder="https://host:44300" required
+                 value="{{ creds.url or '' }}">
+        </label>
+        <label>
+          Benutzername
+          <input type="text" name="user" placeholder="BWADMIN" required
+                 value="{{ creds.user or '' }}">
+        </label>
+        <label>
+          Passwort
+          <input type="password" name="password" required>
+        </label>
+        <div style="display: flex; gap: 1rem;">
+          <label style="flex: 1;">
+            Mandant
+            <input type="text" name="client" placeholder="001" value="{{ creds.client or '001' }}">
+          </label>
+          <label style="flex: 1;">
+            Sprache
+            <input type="text" name="language" placeholder="DE" value="{{ creds.language or '' }}" maxlength="2">
+          </label>
+        </div>
+        <button type="submit">Verbinden</button>
+      </form>
+    </article>
+
+  {% else %}
+    <!-- ─── Search form ─── -->
+    <form method="get" action="/search">
+      <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: flex-end;">
+        <label style="flex: 2; min-width: 200px; margin-bottom: 0;">
+          Suchbegriff (Wildcards * und ? möglich)
+          <input type="text" name="q" placeholder="Z_*"
+                 value="{{ search_term }}" autofocus>
+        </label>
+        <label style="flex: 1; min-width: 120px; margin-bottom: 0;">
+          Objekttyp
+          <select name="type">
+            <option value="">Alle</option>
+            {% for t in object_types %}
+              <option value="{{ t }}" {% if search_type == t %}selected{% endif %}>{{ t }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <div style="padding-top: 1.6rem;">
+          <button type="submit">Suchen</button>
+        </div>
+      </div>
+    </form>
+
+    <!-- ─── Search results ─── -->
+    {% if results is not none %}
+      <form method="post" action="/export" id="exportForm">
+
+        {% if results %}
+          <p class="result-count">{{ results|length }} Objekt(e) gefunden</p>
+          <table>
+            <thead>
+              <tr>
+                <th style="width: 2rem;">
+                  <input type="checkbox" id="selectAll" title="Alle auswählen">
+                </th>
+                <th>Typ</th>
+                <th>Technischer Name</th>
+                <th>Beschreibung</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for obj in results %}
+                <tr>
+                  <td>
+                    <input type="checkbox" name="selected"
+                           value="{{ obj.type }}:{{ obj.name }}"
+                           class="obj-checkbox">
+                  </td>
+                  <td><span class="type-badge">{{ obj.type }}</span></td>
+                  <td><code>{{ obj.name }}</code></td>
+                  <td>{{ obj.description }}</td>
+                  <td>
+                    {% if obj.status == 'active' %}
+                      <span class="status-badge status-active">aktiv</span>
+                    {% elif obj.status == 'inactive' %}
+                      <span class="status-badge status-inactive">inaktiv</span>
+                    {% else %}
+                      <span class="status-badge status-unknown">{{ obj.status }}</span>
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+
+          <div class="export-bar">
+            <button type="submit" name="format" value="json">
+              ⬇ Als JSON exportieren
+            </button>
+            <button type="submit" name="format" value="xml" class="secondary">
+              ⬇ Als XML-ZIP exportieren
+            </button>
+            <span style="color: #6b7280; font-size: 0.85em;">
+              Gewählte Objekte werden vollständig (inkl. Raw-XML) exportiert
+            </span>
+          </div>
+
+        {% elif results is not none %}
+          <p style="color: #6b7280; margin-top: 1rem;">
+            Keine Ergebnisse für <em>{{ search_term }}</em>
+            {% if search_type %}(Typ: {{ search_type }}){% endif %}.
+          </p>
+        {% endif %}
+
+      </form>
+    {% endif %}
+  {% endif %}
+
+  <script>
+    // Select all / deselect all
+    const selectAll = document.getElementById('selectAll');
+    if (selectAll) {
+      selectAll.addEventListener('change', function () {
+        document.querySelectorAll('.obj-checkbox').forEach(cb => {
+          cb.checked = this.checked;
+        });
+      });
+      // Sync selectAll when individual checkboxes change
+      document.querySelectorAll('.obj-checkbox').forEach(cb => {
+        cb.addEventListener('change', function () {
+          const all = document.querySelectorAll('.obj-checkbox');
+          const checked = document.querySelectorAll('.obj-checkbox:checked');
+          selectAll.checked = all.length === checked.length;
+          selectAll.indeterminate = checked.length > 0 && checked.length < all.length;
+        });
+      });
+    }
+
+    // Show loading state on export submit
+    document.querySelectorAll('[name="format"]').forEach(btn => {
+      btn.addEventListener('click', function () {
+        const checked = document.querySelectorAll('.obj-checkbox:checked');
+        if (checked.length === 0) {
+          alert('Bitte mindestens ein Objekt auswählen.');
+          return false;
+        }
+        btn.textContent = '⏳ Wird exportiert...';
+        btn.disabled = true;
+      });
+    });
+  </script>
+</body>
+</html>
