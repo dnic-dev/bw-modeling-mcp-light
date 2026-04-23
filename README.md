@@ -8,7 +8,7 @@ A Model Context Protocol (MCP) server that enables AI assistants like Claude to 
 
 ## 📖 Featured Blog Post
 
-**Agentic AI meets SAP BW** — the full story behind this project: why I built it, what's inside, what happens when Claude walks through a complete BW data lineage on its own, and which open questions I find most interesting.
+**Agentic AI meets SAP BW** — the full story behind this project: why I built it, what's inside, what happens when Claude walks through a complete BW data lineage on its own.
 
 Read the blog (DE + EN): https://www.nextlytics.com/blog/agentic-ai-meets-sap-bw
 
