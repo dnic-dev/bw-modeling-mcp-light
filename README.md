@@ -16,21 +16,15 @@ Read the blog (DE + EN): https://www.nextlytics.com/blog/agentic-ai-meets-sap-bw
 
 ---
 
-## 🆕 What's New
+## 🆕 What's New — v0.3.0
 
-New tool: `bw_get_query` — read any BW Query from your system and get a fully structured, human-readable breakdown:
+CompositeProvider read support and BW repository navigation:
 
-- Complete metadata (InfoProvider, package, InfoArea, responsible, timestamps)
-- All variables with type, input behavior, and processing type
-- Filter area with fixed values and variable references fully resolved
-- Layout: rows, columns, free characteristics — including full member lists for key figure structures
-- Calculated key figures with recursively resolved, human-readable formulas
-- Restricted key figures with their selection conditions (key figure + characteristic restrictions)
-- Inline (local) calculated and restricted key figures inside structures
-- Exceptions with thresholds and alert levels
-- Cell definitions (grid layout queries)
-- Query settings (zero suppression, planning mode, RFC/OData flags)
-- Version fallback: active → inactive if no active version exists
+- `bw_get_composite_provider` — reads a CompositeProvider structure: view node type (Union/Join), source providers with mapping counts, all fields with dimension classification, join conditions, and temporal join details
+- `bw_get_ckf` — reads a global Calculated Key Figure with recursively resolved human-readable formula and full dependency graph of referenced sub-components
+- `bw_get_rkf` — reads a global Restricted Key Figure: base measure and all characteristic restriction groups
+- `bw_get_structure` — reads a global Structure: all members with Formula/Selection breakdown, characteristic filters, and optional child members
+- `bw_list_contents` — navigates the full BW repository tree (InfoAreas → type folders → objects → sub-folders), mirroring the Eclipse BWMT Project Explorer
 
 > **Work in Progress** — bw-modeling-mcp already covers many typical BW development and analysis scenarios, but not everything yet. More is coming. The server has so far only been tested on our own demo systems — if you are running it against your own BW/4HANA system, feedback and bug reports are very welcome. Please use the [Issue templates](https://github.com/dnic-dev/bw-modeling-mcp/issues/new/choose) — you will be helping shape what gets built next.
 
@@ -93,6 +87,17 @@ New tool: `bw_get_query` — read any BW Query from your system and get a fully 
 - Inline local measures inside structures: both formulas and selections
 - Exceptions with alert levels and thresholds, cell definitions for grid layout queries
 - Active version with automatic fallback to inactive
+
+### CompositeProvider (Read)
+- Read CompositeProvider structure — view node type (Union/Join), source providers (inputs) with mapping count, all fields with dimension classification, join conditions, and temporal join details
+
+### Global CP Components (Read)
+- Read global Calculated Key Figure (CKF) — formula recursively resolved to a human-readable string, full dependency graph of all referenced sub-components
+- Read global Restricted Key Figure (RKF) — base measure, all characteristic restriction groups with field and value details
+- Read global Structure — all members with Formula/Selection breakdown, referenced components, characteristic filters, optional child members
+
+### Repository Navigation
+- Navigate the full BW repository tree — drill from InfoArea to type folder to object to sub-folder, mirroring the Eclipse BWMT Project Explorer; each entry returns a `children_path` for seamless drill-down
 
 ### Push API
 - Get JSON push schema for a write-interface aDSO
@@ -228,7 +233,7 @@ Read an InfoObject definition (Characteristic or Key Figure).
 
 ### `bw_create_infoobject`
 Create a new InfoObject. Supports:
-- **Characteristic (CHA):** all data types (CHAR, NUMC, DATS, TIMS, SNUMC), with or without master data and texts, with compounding parents (Klammermerkmale), with referenced InfoObject
+- **Characteristic (CHA):** all data types (CHAR, NUMC, DATS, TIMS, SNUMC), with or without master data and texts, with compound parent InfoObjects, with referenced InfoObject
 - **Key Figure (KYF):** all types (NUM, AMT, QTY, DAT, INT), all aggregations (SUM, MAX, MIN)
 
 Created as inactive — activate with `bw_activate`.
@@ -297,6 +302,21 @@ Push a JSON record array directly into a write-interface aDSO via the BW Push AP
 
 ### `bw_get_query` _(Read only)_
 Read a BW Query definition — variables, filter logic (fixed values and variable references resolved), layout with full member lists, calculated key figures with recursively resolved formulas, restricted key figures with selection conditions, exceptions, and query settings.
+
+### `bw_get_composite_provider` _(Read only)_
+Read a CompositeProvider (HCPR) — view node type (Union/Join), source providers with input mapping counts, all fields with dimension classification, join conditions, and temporal join details.
+
+### `bw_get_ckf` _(Read only)_
+Read a global Calculated Key Figure — formula recursively resolved to a human-readable string, metadata (package, InfoArea, author), and full dependency graph of all referenced sub-components.
+
+### `bw_get_rkf` _(Read only)_
+Read a global Restricted Key Figure — base measure, all characteristic restriction groups (field and value), and metadata.
+
+### `bw_get_structure` _(Read only)_
+Read a global Structure — all members with type (Formula/Selection), referenced components, characteristic filters, optional child members, and metadata.
+
+### `bw_list_contents` _(Read only)_
+Navigate the BW repository tree. Pass a path such as `""` (all InfoAreas), `"area/MYAREA"` (InfoArea contents), `"hcpr/CP_NAME"` (CP sub-folders), or `"adso/ADSO_NAME/trfn"` (Transformations on an aDSO). Each entry includes `children_path` to drill down further.
 
 ### `bw_activate`
 Activate one or more BW objects. Handles impact analysis and automatically deactivated DTPs. Supports: `adso`, `iobj`, `trfn`, `dtp`.
@@ -389,7 +409,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the full technical architecture and c
 ## Roadmap
 
 - **BW on HANA support** — extend compatibility to SAP BW 7.5 on HANA. Support will be ⚠️ Partial — not all REST endpoints available in BW/4HANA exist in BW on HANA, so some tools may not be available or behave differently.
-- **CompositeProvider** — create and manage CompositeProviders
+- **CompositeProvider** — Read: `bw_get_composite_provider` ✅, global components (`bw_get_ckf` / `bw_get_rkf` / `bw_get_structure`) ✅ — Create and modify: planned
 - **BW Queries** — Read: `bw_get_query` ✅ — Create and modify: planned
 - **Process Chains** — build and manage Process Chains
 - **Open ODS View** — create Open ODS Views

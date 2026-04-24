@@ -16,7 +16,7 @@ export function parseActivationMessages(xml: string): string[] {
 
 /**
  * Parse DTP names that were deactivated by impact analysis from activation response.
- * Example title: "Der von der Änderung betroffene DTP DTP_006O0NFKHMZGUXJUY0UM6N6RK wurde deaktiviert"
+ * Matches both German and English SAP system messages containing a DTP name and a deactivation keyword.
  */
 export function parseDtpsDeactivated(xml: string): string[] {
   const dtps: string[] = [];

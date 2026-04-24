@@ -703,7 +703,7 @@ function buildNoUpdateToRoutineRule(
 }
 
 /**
- * Build a StepRead (Nachlesen) rule to replace any existing rule.
+ * Build a StepRead (Lookup) rule to replace any existing rule.
  */
 function buildLookupRule(
   _ruleXml: string,
@@ -1068,7 +1068,7 @@ export async function bwUpdateTransformation(
     });
   }
 
-  // ── Lookup path (Nachlesen) ──────────────────────────────────────────────
+  // ── Lookup path ──────────────────────────────────────────────────────────
   if (ruleType === 'lookup') {
     if (!lookupObject || !lookupObjectType) {
       return JSON.stringify({
@@ -1121,7 +1121,7 @@ export async function bwUpdateTransformation(
       success: true,
       message:
         `InfoObject ${tgtUpper} in transformation ${transformationName.toUpperCase()} ` +
-        `converted to StepRead (Nachlesen) from ${lookupObjectType.toUpperCase()} ${lookupObject.toUpperCase()}. Call bw_activate to activate.`,
+        `converted to StepRead (Lookup) from ${lookupObjectType.toUpperCase()} ${lookupObject.toUpperCase()}. Call bw_activate to activate.`,
       lookup_object: lookupObject.toUpperCase(),
       lookup_object_type: lookupObjectType.toUpperCase(),
       lock_handle: lockHandle,
@@ -1271,9 +1271,9 @@ export async function bwUpdateTransformation(
  */
 function ioBwNameToHanaSqlColumn(name: string): string {
   if (name.startsWith('0')) {
-    return name.substring(1); // e.g. 0RECORDMODE → RECORDMODE
+    return name.substring(1); // e.g. 0IOBJ_NAME → IOBJ_NAME
   }
-  return `"/BIC/${name}"`; // e.g. NLPLSTID → "/BIC/NLPLSTID"
+  return `"/BIC/${name}"`; // e.g. FIELD_NAME → "/BIC/FIELD_NAME"
 }
 
 /**

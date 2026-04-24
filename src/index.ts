@@ -19,6 +19,9 @@ import { bwCreateInfoArea, bwMoveObject, bwGetInfoarea } from './tools/infoarea.
 import { bwCreateInfosource, bwUpdateInfosource, bwGetInfosource, InfosourceField } from './tools/infosource.js';
 import { bwPushData, bwGetPushSchema } from './tools/push.js';
 import { bwGetQuery } from './tools/query.js';
+import { bwGetCompositeProvider } from './tools/composite_provider.js';
+import { bwGetCkf, bwGetRkf, bwGetStructure } from './tools/cp_components.js';
+import { bwListContents } from './tools/repository.js';
 
 // Single shared client instance (CSRF token + session cookies are reused)
 const client = createClientFromEnv();
@@ -65,7 +68,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           },
           object_name: {
             type: 'string',
-            description: 'Object name (e.g. "NJ_MCP" or "02F0QGYQS59Z6M64RXQ0JSTOBZX2OROX").',
+            description: 'Object name (e.g. "ADSO_NAME" or "TRFN_UUID_KEY").',
           },
         },
         required: ['object_type', 'object_name'],
@@ -80,7 +83,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         properties: {
           adso_name: {
             type: 'string',
-            description: 'aDSO name (e.g. "NJ_MCP").',
+            description: 'aDSO name (e.g. "ADSO_NAME").',
           },
         },
         required: ['adso_name'],
@@ -98,7 +101,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         properties: {
           adso_name: {
             type: 'string',
-            description: 'Name for the new aDSO (e.g. "NJ_MCP2").',
+            description: 'Name for the new aDSO (e.g. "ADSO_NAME").',
           },
           label: {
             type: 'string',
@@ -128,7 +131,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           },
           write_interface: {
             type: 'boolean',
-            description: 'Enable write interface / Schreib-Interface (pushMode="true"). Default false.',
+            description: 'Enable write interface (pushMode="true"). Default false.',
           },
         },
         required: ['adso_name', 'label', 'info_area'],
@@ -151,11 +154,11 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         properties: {
           adso_name: {
             type: 'string',
-            description: 'aDSO name (e.g. "NJ_MCP").',
+            description: 'aDSO name (e.g. "ADSO_NAME").',
           },
           infoobject_name: {
             type: 'string',
-            description: 'InfoObject name or comma-separated list to add or remove (e.g. "NJRSM" or "NJRSM,NJSTATE"). Required for add_field and remove_field.',
+            description: 'InfoObject name or comma-separated list to add or remove (e.g. "IOBJ_NAME" or "IOBJ_A,IOBJ_B"). Required for add_field and remove_field.',
           },
           action: {
             type: 'string',
@@ -182,7 +185,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           },
           field_name: {
             type: 'string',
-            description: 'Field name to modify (only for action "update_field_properties"), e.g. "NJSTATE" or "AMOUNT_P".',
+            description: 'Field name to modify (only for action "update_field_properties"), e.g. "FIELD_NAME" or "AMOUNT_P".',
           },
           properties: {
             type: 'object',
@@ -231,7 +234,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
               snap_shot_scenario: { type: 'boolean', description: 'Snapshot support (Standard type sub-option).' },
               unique_data_records: { type: 'boolean', description: 'Unique records (Standard type sub-option).' },
               planning_mode: { type: 'boolean', description: 'Planning enabled.' },
-              write_interface: { type: 'boolean', description: 'Enable or disable write interface / Schreib-Interface (pushMode).' },
+              write_interface: { type: 'boolean', description: 'Enable or disable write interface (pushMode).' },
               label: { type: 'string', description: 'aDSO description text.' },
             },
           },
@@ -259,7 +262,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           },
           name: {
             type: 'string',
-            description: 'InfoObject name, max 9 characters (e.g. "NJ_TEST").',
+            description: 'InfoObject name, max 9 characters (e.g. "IOBJ_NAME").',
           },
           info_area: {
             type: 'string',
@@ -293,12 +296,12 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           },
           referenced_infoobject: {
             type: 'string',
-            description: 'CHA only. Reference to an existing InfoObject (e.g. "NJLOC"). Omit withMasterData/withTexts — they are inherited. Default "".',
+            description: 'CHA only. Reference to an existing InfoObject (e.g. "IOBJ_NAME"). Omit withMasterData/withTexts — they are inherited. Default "".',
           },
           compound_infoobjects: {
             type: 'array',
             items: { type: 'string' },
-            description: 'Technical names of the compound parent InfoObjects (Klammermerkmale), in order. CHA only. Example: ["0SOURSYSTEM", "ZCABRKL"].',
+            description: 'Technical names of the compound parent InfoObjects, in order. CHA only. Example: ["COMPND_IOBJ_NAME"].',
           },
           // KYF-specific
           object_specific_data_type: {
@@ -414,7 +417,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           },
           object_name: {
             type: 'string',
-            description: 'Technical name of the object to move (e.g. "NJ_MCP").',
+            description: 'Technical name of the object to move (e.g. "OBJECT_NAME").',
           },
           target_info_area: {
             type: 'string',
@@ -433,7 +436,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         properties: {
           infoobject_name: {
             type: 'string',
-            description: 'InfoObject name (e.g. "NJRSM" or "0CALYEAR").',
+            description: 'InfoObject name (e.g. "IOBJ_NAME").',
           },
         },
         required: ['infoobject_name'],
@@ -451,7 +454,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         properties: {
           name: {
             type: 'string',
-            description: 'InfoObject name (e.g. "NLALBID").',
+            description: 'InfoObject name (e.g. "IOBJ_NAME").',
           },
           description: {
             type: 'string',
@@ -459,7 +462,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           },
           transport: {
             type: 'string',
-            description: 'Workbench transport order number (e.g. "NLBK900126"). Required when object is in a non-local package.',
+            description: 'Workbench transport order number (e.g. "DEVK900000"). Required when object is in a non-local package.',
           },
           fixed_unit: {
             type: 'string',
@@ -475,7 +478,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
             items: {
               type: 'object',
               properties: {
-                name: { type: 'string', description: 'Technical name of the referenced InfoObject (e.g. "NLALBNAM").' },
+                name: { type: 'string', description: 'Technical name of the referenced InfoObject (e.g. "ATTR_IOBJ_NAME").' },
                 type: { type: 'string', enum: ['DIS', 'NAV'], description: 'Attribute type: DIS (Display) or NAV (Navigation).' },
                 time_dependent: { type: 'boolean', description: 'Time-dependent attribute (NAV only, default false).' },
                 display_in_query: { type: 'boolean', description: 'Display in query (default true).' },
@@ -492,14 +495,14 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       name: 'bw_get_transformation',
       description:
         'Read a Transformation structure — source/target segments, mapping rules. ' +
-        'Transformation names are UUID-like generated keys (e.g. "02F0QGYQS59Z6M64RXQ0JSTOBZX2OROX"). ' +
+        'Transformation names are UUID-like generated keys (e.g. "TRFN_UUID_KEY"). ' +
         'Use bw_xref on the aDSO to find the transformation name.',
       inputSchema: {
         type: 'object',
         properties: {
           transformation_name: {
             type: 'string',
-            description: 'Transformation name (UUID-like key, e.g. "02F0QGYQS59Z6M64RXQ0JSTOBZX2OROX").',
+            description: 'Transformation name (UUID-like key, e.g. "TRFN_UUID_KEY").',
           },
         },
         required: ['transformation_name'],
@@ -527,14 +530,14 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           source_field: {
             type: 'string',
             description:
-              'Source field name in the source segment (e.g. "NJRSM"). ' +
+              'Source field name in the source segment (e.g. "FIELD_NAME"). ' +
               'Required for rule_type="direct" if the existing rule has no source mapping. ' +
               'Also required for routine/formula when the target has no source mapping yet (StepNoUpdate). ' +
               'Required for rule_type="lookup".',
           },
           target_infoobject: {
             type: 'string',
-            description: 'Target InfoObject name in the target segment (e.g. "NJRSM").',
+            description: 'Target InfoObject name in the target segment (e.g. "IOBJ_NAME").',
           },
           rule_type: {
             type: 'string',
@@ -544,7 +547,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
               '"routine": converts the rule to an AMDP field routine (StepRoutine) — the server generates the ABAP class automatically. ' +
               '"formula": converts the rule to a formula rule (StepFormula) — requires the formula parameter. ' +
               '"constant": sets a fixed constant value (StepConstant) — requires the constant_value parameter, source_field is ignored. ' +
-              '"lookup": converts the rule to a Nachlesen (StepRead) rule — requires lookup_object and lookup_object_type. ' +
+              '"lookup": converts the rule to a StepRead (Lookup) rule — requires lookup_object and lookup_object_type. ' +
               '"no_update": reverts any existing mapping back to StepNoUpdate (no mapping, field stays empty). ' +
               'IMPORTANT: AMDP SQLSCRIPT methods only allow ASCII 7-bit characters — no German umlauts or special symbols in code or comments.',
           },
@@ -552,7 +555,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
             type: 'string',
             description:
               'Formula expression for rule_type="formula" (required). ' +
-              'Source fields are referenced by their technical field name: use /BIC/FIELDNAME for custom InfoObjects (e.g. "/BIC/NLTRKNUM + 10"), ' +
+              'Source fields are referenced by their technical field name: use /BIC/FIELDNAME for custom InfoObjects (e.g. "/BIC/FIELD_NAME + 10"), ' +
               'or the direct field name for standard InfoObjects. ' +
               'Operators: +, -, *, /. Functions: IF, ABS, CONCATENATE, DATE_YEAR, etc. ' +
               'Comparison operators < > <= >= <> are supported (will be XML-escaped automatically).',
@@ -682,7 +685,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           },
           object_name: {
             type: 'string',
-            description: 'Object name (e.g. "NJ_MCP" or "DTP_006O0NFKHMZGUXJUY0UM6N6RK").',
+            description: 'Object name (e.g. "OBJECT_NAME" or "DTP_...").',
           },
           lock_handle: {
             type: 'string',
@@ -713,7 +716,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           },
           object_name: {
             type: 'string',
-            description: 'Technical object name (e.g. "NJ_MCP2").',
+            description: 'Technical object name (e.g. "OBJECT_NAME").',
           },
         },
         required: ['object_type', 'object_name'],
@@ -735,7 +738,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           },
           object_name: {
             type: 'string',
-            description: 'Object name (e.g. "NJ_SPOT").',
+            description: 'Object name (e.g. "OBJECT_NAME").',
           },
         },
         required: ['object_type', 'object_name'],
@@ -749,7 +752,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         properties: {
           name: {
             type: 'string',
-            description: 'InfoSource name (e.g. "NLISTRKPL").',
+            description: 'InfoSource name (e.g. "INFOSOURCE_NAME").',
           },
         },
         required: ['name'],
@@ -781,7 +784,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         properties: {
           name: {
             type: 'string',
-            description: 'InfoSource name (e.g. "NLISSPOT").',
+            description: 'InfoSource name (e.g. "INFOSOURCE_NAME").',
           },
           description: {
             type: 'string',
@@ -829,7 +832,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         properties: {
           name: {
             type: 'string',
-            description: 'InfoSource name (e.g. "NLISSPOT").',
+            description: 'InfoSource name (e.g. "INFOSOURCE_NAME").',
           },
           description: {
             type: 'string',
@@ -895,7 +898,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         properties: {
           dtp_name: {
             type: 'string',
-            description: 'DTP name (e.g. "DTP_006O0NFKHMZGUZ7BZVBODGIRK").',
+            description: 'DTP name (e.g. "DTP_...").',
           },
         },
         required: ['dtp_name'],
@@ -927,7 +930,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           },
           source_name: {
             type: 'string',
-            description: 'Source object name (e.g. "NLSPOTIFY").',
+            description: 'Source object name (e.g. "SOURCE_NAME").',
           },
           source_type: {
             type: 'string',
@@ -935,7 +938,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           },
           target_name: {
             type: 'string',
-            description: 'Target object name (e.g. "NLSPTRKPL").',
+            description: 'Target object name (e.g. "TARGET_NAME").',
           },
           target_type: {
             type: 'string',
@@ -974,7 +977,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         properties: {
           dtp_name: {
             type: 'string',
-            description: 'DTP name (e.g. "DTP_006O0NFKHMZGUZIU2QMRJZH1C").',
+            description: 'DTP name (e.g. "DTP_...").',
           },
           field_name: {
             type: 'string',
@@ -1001,7 +1004,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         properties: {
           dtp_name: {
             type: 'string',
-            description: 'DTP name to update (e.g. "DTP_006O0NFKHMZGUZ79ETGNNZ6RK").',
+            description: 'DTP name to update (e.g. "DTP_...").',
           },
           description: {
             type: 'string',
@@ -1042,7 +1045,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     {
       name: 'bw_get_push_schema',
       description:
-        'Fetch the JSON schema for an aDSO write interface (Schreib-Interface). ' +
+        'Fetch the JSON schema for an aDSO write interface. ' +
         'Returns field names, data types, and required fields. ' +
         'Use this before bw_push_data to know what fields to include in records.',
       inputSchema: {
@@ -1050,7 +1053,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         properties: {
           adso_name: {
             type: 'string',
-            description: 'aDSO technical name (e.g. "NLSPTFYW").',
+            description: 'aDSO technical name (e.g. "ADSO_NAME").',
           },
         },
         required: ['adso_name'],
@@ -1059,7 +1062,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     {
       name: 'bw_push_data',
       description:
-        'Push data records directly into an aDSO inbound table via the SAP BW/4HANA write interface (Schreib-Interface). ' +
+        'Push data records directly into an aDSO inbound table via the SAP BW/4HANA write interface. ' +
         'The aDSO must have write_interface enabled (pushMode="true"). ' +
         'Use bw_get_push_schema first to verify field names and types. ' +
         'Success = HTTP 204 (SAP returns empty body). ' +
@@ -1069,7 +1072,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         properties: {
           adso_name: {
             type: 'string',
-            description: 'aDSO technical name (e.g. "NLSPTFYW").',
+            description: 'aDSO technical name (e.g. "ADSO_NAME").',
           },
           records: {
             type: 'array',
@@ -1100,6 +1103,99 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           },
         },
         required: ['query_name'],
+      },
+    },
+    {
+      name: 'bw_get_composite_provider',
+      description:
+        'Read a CompositeProvider (HCPR) structure — general info, view node type (Union/Join), ' +
+        'source providers (inputs) with mapping counts, fields with dimension classification, ' +
+        'join condition, and temporal join details. Returns the inactive version.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          composite_provider_name: {
+            type: 'string',
+            description: 'Technical name of the CompositeProvider (e.g. "HCPR_NAME").',
+          },
+        },
+        required: ['composite_provider_name'],
+      },
+    },
+    {
+      name: 'bw_list_contents',
+      description:
+        'Read the direct children of any node in the BW repository tree. ' +
+        'The path parameter maps to the navigation hierarchy: ' +
+        'use "/" or "" for all InfoAreas, ' +
+        '"area/{name}" for InfoArea contents (object type folders), ' +
+        '"area/{name}/{folder}" for objects within a folder (e.g. "area/MYAREA/adso"), ' +
+        '"{type}/{name}" to expand an object (e.g. "hcpr/CP_NAME" → sub-folders), ' +
+        '"{type}/{name}/{subfolder}" for objects within a sub-folder (e.g. "adso/ADSO_NAME/trfn"). ' +
+        'Returns name, description, object_type, object_subtype, status, has_children, ' +
+        'self_url, fiori_only, and children_path (pass directly to bw_list_contents to drill down).',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          path: {
+            type: 'string',
+            description:
+              'Repository path to list. Use "/" or "" for all InfoAreas. ' +
+              'Examples: "area/MYAREA", "area/MYAREA/hcpr", "hcpr/CP_NAME", "hcpr/CP_NAME/elem_ckf", "adso/ADSO_NAME/trfn".',
+          },
+        },
+        required: ['path'],
+      },
+    },
+    {
+      name: 'bw_get_ckf',
+      description:
+        'Read a global Calculated Key Figure (CKF) defined at CompositeProvider level. ' +
+        'Returns technical name, description, formula (recursively resolved), metadata, ' +
+        'and the full dependency graph of referenced CKF/RKF sub-components.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          component_name: {
+            type: 'string',
+            description: 'Technical name of the CKF (e.g. "CKF_NAME").',
+          },
+        },
+        required: ['component_name'],
+      },
+    },
+    {
+      name: 'bw_get_rkf',
+      description:
+        'Read a global Restricted Key Figure (RKF) defined at CompositeProvider level. ' +
+        'Returns technical name, description, base measure, characteristic filters, metadata, ' +
+        'and the full dependency graph of referenced CKF/RKF sub-components.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          component_name: {
+            type: 'string',
+            description: 'Technical name of the RKF (e.g. "RKF_NAME").',
+          },
+        },
+        required: ['component_name'],
+      },
+    },
+    {
+      name: 'bw_get_structure',
+      description:
+        'Read a global Structure defined at CompositeProvider level. ' +
+        'Returns the ordered member list with type (Selection/Formula), referenced component ' +
+        'or IOBJ name, characteristic filters, and the full dependency graph.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          component_name: {
+            type: 'string',
+            description: 'Technical name of the Structure (e.g. "STR_NAME").',
+          },
+        },
+        required: ['component_name'],
       },
     },
   ],
@@ -1468,6 +1564,26 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case 'bw_get_query':
         text = await bwGetQuery(args?.query_name as string);
+        break;
+
+      case 'bw_list_contents':
+        text = await bwListContents(client, args?.path as string);
+        break;
+
+      case 'bw_get_composite_provider':
+        text = await bwGetCompositeProvider(client, args?.composite_provider_name as string);
+        break;
+
+      case 'bw_get_ckf':
+        text = await bwGetCkf(client, args?.component_name as string);
+        break;
+
+      case 'bw_get_rkf':
+        text = await bwGetRkf(client, args?.component_name as string);
+        break;
+
+      case 'bw_get_structure':
+        text = await bwGetStructure(client, args?.component_name as string);
         break;
 
       default:

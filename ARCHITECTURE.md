@@ -109,12 +109,15 @@ src/
 └── tools/
     ├── activation.ts     # bw_activate, bw_unlock
     ├── adso.ts           # bw_get_adso, bw_create_adso, bw_update_adso
+    ├── composite_provider.ts # bw_get_composite_provider
+    ├── cp_components.ts  # bw_get_ckf, bw_get_rkf, bw_get_structure
     ├── delete.ts         # bw_delete
     ├── dtp.ts            # bw_get_dtp, bw_get_dtps, bw_create_dtp, bw_update_dtp, bw_set_dtp_filter_routine
     ├── infoarea.ts       # bw_get_infoarea, bw_create_infoarea, bw_move_object
     ├── infoobject.ts     # bw_get_infoobject, bw_create_infoobject, bw_update_infoobject
     ├── infosource.ts     # bw_get_infosource, bw_create_infosource, bw_update_infosource
     ├── push.ts           # bw_push_data, bw_get_push_schema
+    ├── repository.ts     # bw_list_contents
     ├── search.ts         # bw_search, bw_xref
     ├── transformation.ts # bw_get_transformation, bw_create_transformation,
     │                     # bw_update_transformation, bw_set_transformation_routine,

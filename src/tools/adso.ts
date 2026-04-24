@@ -717,7 +717,7 @@ export async function bwUpdateAdsoAddPureField(
 /**
  * bw_update_adso — add or remove one or more InfoObject fields in an aDSO.
  *
- * infoObjectName may be a single name or a comma-separated list (e.g. "NJRSM,NJSTATE").
+ * infoObjectName may be a single name or a comma-separated list (e.g. "IOBJ_A,IOBJ_B").
  * All fields are applied in one GET → mutate → PUT cycle; Lock/Unlock happen once.
  *
  * action "add_field" (default): reads each InfoObject, injects all elements, then PUT.

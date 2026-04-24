@@ -32,7 +32,7 @@ export interface CreateInfoObjectArgs {
   aggregation_type?: string;
   fixed_unit?: string;
   fixed_currency?: string;
-  // compound parents (Klammermerkmale) — CHA only; order matters (matches BW compound order)
+  // compound parent InfoObjects — CHA only; order matters (matches BW compound order)
   compound_infoobjects?: string[];
   // common
   package?: string;
