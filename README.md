@@ -123,7 +123,53 @@ The BW MCP server handles the BW modeling structure — creating the Transformat
 
 ---
 
-## Requirements
+## BW Web Exporter (Python)
+
+A standalone Python web application that lets you browse, search and export SAP BW/4HANA objects through a browser — no MCP client required.
+
+### Requirements
+
+- Python 3.10 or later
+- SAP BW/4HANA system with REST API access (`/sap/bw/modeling/`)
+
+### Installation
+
+```bash
+git clone https://github.com/dnic-dev/bw-modeling-mcp.git
+cd bw-modeling-mcp
+
+# Create and activate a virtual environment
+python -m venv .venv
+
+# Linux / macOS
+source .venv/bin/activate
+
+# Windows
+.venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
+```
+
+### Usage
+
+```bash
+python app.py
+```
+
+Open `http://localhost:5000` in your browser, enter your BW connection details and start searching and exporting objects.
+
+### What it can export
+
+Supports all major BW object types: **ADSO**, **IOBJ**, **AREA**, **TRCS**, **TRFN**, **DTPA**, **QERY**.
+
+Export formats:
+- **JSON** — structured metadata + raw XML per object, single file
+- **XML-ZIP** — one `.xml` file per object, packed as ZIP archive
+
+---
+
+## MCP Server (TypeScript) — Requirements
 
 - SAP BW/4HANA system with REST API access (`/sap/bw/modeling/`)
 - Node.js 18 or later
@@ -131,7 +177,7 @@ The BW MCP server handles the BW modeling structure — creating the Transformat
 
 ---
 
-## Installation
+## MCP Server — Installation
 
 ```bash
 git clone https://github.com/dnic-dev/bw-modeling-mcp.git
