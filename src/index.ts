@@ -23,6 +23,7 @@ import { bwGetCompositeProvider } from './tools/composite_provider.js';
 import { bwGetCkf, bwGetRkf, bwGetStructure } from './tools/cp_components.js';
 import { bwListContents } from './tools/repository.js';
 import { bwListSourceSystems, bwListDatasources, bwGetSourceSystem, bwGetDatasource } from './tools/datasource.js';
+import { bwGetDataflow } from './tools/dataflow.js';
 
 // Single shared client instance (CSRF token + session cookies are reused)
 const client = createClientFromEnv();
@@ -1294,6 +1295,47 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         required: ['component_name'],
       },
     },
+    {
+      name: 'bw_get_dataflow',
+      description:
+        'Trace the data flow graph for a BW object — upstream sources, downstream targets, or both. ' +
+        'Returns a tree (≤ 30 nodes) or flat table (> 30 nodes) showing all connected objects ' +
+        '(ADSO, RSDS, TRFN, DTPA, TRCS, IOBJ, HCPR, LSYS, ELEM) with their type, name, description, and status. ' +
+        'Use this to understand the full lineage of an object without navigating each connection manually. ' +
+        'IMPORTANT: Always print the complete tool result verbatim as a fenced code block in your chat response — never omit or summarize it.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          object_name: {
+            type: 'string',
+            description: 'Technical name of the BW object (e.g. "ADSO_NAME", "DS_NAME").',
+          },
+          object_type: {
+            type: 'string',
+            description: 'BW object type: ADSO, RSDS, HCPR, TRFN, DTPA, IOBJ, TRCS, LSYS.',
+          },
+          source_system: {
+            type: 'string',
+            description: 'Required when object_type is RSDS. Logical source system name (e.g. "LSYS_NAME").',
+          },
+          direction: {
+            type: 'string',
+            enum: ['upwards', 'downwards', 'both'],
+            description: 'Direction to traverse: "upwards" (sources), "downwards" (targets), or "both". Default "both".',
+          },
+          levels: {
+            type: 'number',
+            description: 'Number of levels to expand in each direction. -1 = all levels (default).',
+          },
+          format: {
+            type: 'string',
+            enum: ['text', 'raw'],
+            description: 'Output format. "text" (default): tree or flat table. "raw": raw XML from BW.',
+          },
+        },
+        required: ['object_name', 'object_type'],
+      },
+    },
   ],
 }));
 
@@ -1710,6 +1752,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case 'bw_get_structure':
         text = await bwGetStructure(client, args?.component_name as string);
+        break;
+
+      case 'bw_get_dataflow':
+        text = await bwGetDataflow(
+          client,
+          args?.object_name as string,
+          args?.object_type as string,
+          args?.source_system as string | undefined,
+          (args?.direction as 'upwards' | 'downwards' | 'both') ?? 'both',
+          (args?.levels as number) ?? -1,
+          (args?.format as 'text' | 'raw') ?? 'text',
+        );
         break;
 
       default:
