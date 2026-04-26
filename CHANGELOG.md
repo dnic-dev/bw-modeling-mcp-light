@@ -4,6 +4,7 @@
 
 ### Added
 
+- `bw_get_dataflow` _(Read only)_ — reads the complete structural data flow of any BW object (ADSO, RSDS, HCPR, TRFN, DTPA, IOBJ, TRCS, LSYS) using the same transient dataflow graph that Eclipse BWMT renders; supports direction (upwards / downwards / both), configurable depth levels, and format "text" | "raw"; text output uses tree rendering for ≤ 30 nodes and flat table for larger graphs
 - `bw_list_source_systems` — lists all logical source systems (LSYS) registered in BW, optionally filtered by type (ODP_BW, ODP_SAP, ODP_CDS, ODP, FILE); returns name, description, type, status, and `children_path`
 - `bw_list_datasources` — recursively traverses the full APCO hierarchy under a source system and lists all DataSources with name, description, status, and APCO path; format: `text` (default table) or `raw` (XML feed bodies)
 - `bw_get_source_system` — reads full metadata of a single LSYS including type, description, connection details (ODP context/destination, HANA remote source/schema/SDI adapter)
