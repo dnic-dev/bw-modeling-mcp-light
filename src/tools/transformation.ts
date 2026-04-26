@@ -158,16 +158,14 @@ export async function bwCreateTransformation(
 export async function bwGetTransformation(
   client: BwClient,
   transformationName: string,
-  raw?: boolean,
+  format: 'text' | 'raw' = 'text',
 ): Promise<string> {
   const path = `/sap/bw/modeling/trfn/${transformationName.toLowerCase()}/m`;
   const result = await client.get(path, TRFN_ACCEPT);
   const status = result.headers['object_status'] ?? result.headers['OBJECT_STATUS'] ?? 'unknown';
   const ts = result.headers['timestamp'] ?? '';
   const xml = result.body;
-  if (raw) {
-    return `Transformation: ${transformationName.toUpperCase()}\nStatus: ${status}\nTimestamp: ${ts}\n\n${xml}`;
-  }
+  if (format === 'raw') return xml;
   return summarizeTransformation(transformationName.toUpperCase(), status, ts, xml);
 }
 

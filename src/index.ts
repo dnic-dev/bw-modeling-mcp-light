@@ -22,6 +22,7 @@ import { bwGetQuery } from './tools/query.js';
 import { bwGetCompositeProvider } from './tools/composite_provider.js';
 import { bwGetCkf, bwGetRkf, bwGetStructure } from './tools/cp_components.js';
 import { bwListContents } from './tools/repository.js';
+import { bwListSourceSystems, bwListDatasources, bwGetSourceSystem, bwGetDatasource } from './tools/datasource.js';
 
 // Single shared client instance (CSRF token + session cookies are reused)
 const client = createClientFromEnv();
@@ -58,7 +59,9 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     {
       name: 'bw_xref',
       description:
-        'Find where-used / dependencies for a BW object. Returns all objects that reference the given object. Use this to find the Transformation and DTPs that reference an aDSO, or to find which DTPs depend on a Transformation.',
+        'Find where-used / dependencies for a BW object. Returns all objects that reference the given object. ' +
+        'Use this to find the Transformation and DTPs that reference an aDSO, or to find which DTPs depend on a Transformation. ' +
+        'Use object_type=DTPA to find the process chain(s) a DTP belongs to — this is preferred over bw_get_dtp when only the process chain is needed.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -69,6 +72,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           object_name: {
             type: 'string',
             description: 'Object name (e.g. "ADSO_NAME" or "TRFN_UUID_KEY").',
+          },
+          source_system: {
+            type: 'string',
+            description: 'Required for object_type "RSDS". Logical source system name (e.g. "LSYS_NAME"). The correct padded objectName is built automatically.',
           },
         },
         required: ['object_type', 'object_name'],
@@ -504,6 +511,11 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
             type: 'string',
             description: 'Transformation name (UUID-like key, e.g. "TRFN_UUID_KEY").',
           },
+          format: {
+            type: 'string',
+            enum: ['text', 'raw'],
+            description: 'Output format. "text" (default): compact human-readable summary. "raw": raw XML from BW.',
+          },
         },
         required: ['transformation_name'],
       },
@@ -892,7 +904,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       name: 'bw_get_dtp',
       description:
         'Read a DTP (Data Transfer Process) definition — source, target, transformation, extraction settings, and filter fields (selections and routines). ' +
-        'Use bw_xref on an aDSO to find the DTP name first.',
+        'Use bw_xref on an aDSO to find the DTP name first. ' +
+        'To find only the process chain a DTP belongs to, use bw_xref with object_type=DTPA instead — it is faster and avoids loading the full DTP definition.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -1148,6 +1161,89 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: 'bw_list_source_systems',
+      description:
+        'List logical source systems (LSYS) registered in the BW datasource structure. ' +
+        'If source_system_type is provided, lists only source systems of that type (e.g. "ODP_SAP", "ODP_BW", "FILE"). ' +
+        'If omitted, lists all source systems across all types. ' +
+        'Returns each LSYS with name, description, source_system_type, status, self_url, and children_path ' +
+        '(pass children_path directly to bw_list_datasources as the source_system argument).',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          source_system_type: {
+            type: 'string',
+            description:
+              'Optional source system type filter. Known values: ODP_BW, ODP_SAP, ODP_CDS, ODP, FILE. ' +
+              'Omit to list all source systems.',
+          },
+        },
+        required: [],
+      },
+    },
+    {
+      name: 'bw_list_datasources',
+      description:
+        'List all DataSources (RSDS) available under a logical source system. ' +
+        'Recursively traverses the full application component (APCO) hierarchy — may take time for large systems. ' +
+        'Returns each DataSource with name, source_system, description, status, self_url, and apco_path ' +
+        '(ordered list of application component titles from root to the DataSource).',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          source_system: {
+            type: 'string',
+            description: 'Logical source system name (e.g. "LSYS_NAME"). Case-insensitive.',
+          },
+          format: {
+            type: 'string',
+            enum: ['text', 'raw'],
+            description: 'Output format. "text" (default): compact plain-text table. "raw": raw XML feed bodies from BW.',
+          },
+        },
+        required: ['source_system'],
+      },
+    },
+    {
+      name: 'bw_get_source_system',
+      description:
+        'Read the metadata of a single logical source system (LSYS) — type, description, connection details, and maintenance properties.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          source_system: {
+            type: 'string',
+            description: 'Logical source system name (e.g. "LSYS_NAME"). Case-insensitive.',
+          },
+        },
+        required: ['source_system'],
+      },
+    },
+    {
+      name: 'bw_get_datasource',
+      description:
+        'Read the full structure of a DataSource (RSDS) — metadata, all fields with types and properties, and adapter configuration.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          datasource_name: {
+            type: 'string',
+            description: 'Technical name of the DataSource (e.g. "DS_NAME").',
+          },
+          source_system: {
+            type: 'string',
+            description: 'Logical source system name (e.g. "LSYS_NAME").',
+          },
+          format: {
+            type: 'string',
+            enum: ['text', 'raw'],
+            description: 'Output format. "text" (default): compact human-readable summary. "raw": raw XML from BW.',
+          },
+        },
+        required: ['datasource_name', 'source_system'],
+      },
+    },
+    {
       name: 'bw_get_ckf',
       description:
         'Read a global Calculated Key Figure (CKF) defined at CompositeProvider level. ' +
@@ -1222,7 +1318,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         text = await bwXref(
           client,
           args?.object_type as string,
-          args?.object_name as string
+          args?.object_name as string,
+          args?.source_system as string | undefined,
         );
         break;
 
@@ -1385,7 +1482,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case 'bw_get_transformation':
-        text = await bwGetTransformation(client, args?.transformation_name as string);
+        text = await bwGetTransformation(
+          client,
+          args?.transformation_name as string,
+          args?.format as 'text' | 'raw' | undefined ?? 'text',
+        );
         break;
 
       case 'bw_update_transformation':
@@ -1568,6 +1669,31 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case 'bw_list_contents':
         text = await bwListContents(client, args?.path as string);
+        break;
+
+      case 'bw_list_source_systems':
+        text = await bwListSourceSystems(client, args?.source_system_type as string | undefined);
+        break;
+
+      case 'bw_list_datasources':
+        text = await bwListDatasources(
+          client,
+          args?.source_system as string,
+          args?.format as 'text' | 'raw' | undefined ?? 'text',
+        );
+        break;
+
+      case 'bw_get_source_system':
+        text = await bwGetSourceSystem(client, args?.source_system as string);
+        break;
+
+      case 'bw_get_datasource':
+        text = await bwGetDatasource(
+          client,
+          args?.datasource_name as string,
+          args?.source_system as string,
+          args?.format as 'text' | 'raw' | undefined ?? 'text',
+        );
         break;
 
       case 'bw_get_composite_provider':

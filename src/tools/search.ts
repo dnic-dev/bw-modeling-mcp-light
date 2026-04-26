@@ -95,6 +95,14 @@ export async function bwSearch(
   return formatEntries(entries, header);
 }
 
+function padRsdsObjectName(objectName: string): string {
+  const upper = objectName.trim().toUpperCase();
+  if (upper.length >= 40) return upper;
+  const match = upper.match(/^(.*\S)\s+(\S+)$/);
+  if (!match) return upper;
+  return match[1].padEnd(30) + match[2];
+}
+
 /**
  * bw_xref — find where-used / dependencies for any BW object.
  *
@@ -107,12 +115,21 @@ export async function bwSearch(
 export async function bwXref(
   client: BwClient,
   objectType: string,
-  objectName: string
+  objectName: string,
+  sourceSystem?: string,
 ): Promise<string> {
+  let resolvedName: string;
+  if (objectType.toUpperCase() === 'RSDS') {
+    if (!sourceSystem) throw new Error('bw_xref with object_type RSDS requires source_system parameter.');
+    resolvedName = objectName.toUpperCase().padEnd(30) + sourceSystem.toUpperCase();
+  } else {
+    resolvedName = objectName.toUpperCase();
+  }
+
   const path =
     `/sap/bw/modeling/repo/is/xref` +
     `?objectType=${encodeURIComponent(objectType.toUpperCase())}` +
-    `&objectName=${encodeURIComponent(objectName.toUpperCase())}`;
+    `&objectName=${encodeURIComponent(resolvedName)}`;
 
   const result = await client.get(path, 'application/atom+xml;type=feed');
   const entries = parseAtomEntries(result.body);

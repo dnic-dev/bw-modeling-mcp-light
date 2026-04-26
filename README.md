@@ -16,7 +16,19 @@ Read the blog (DE + EN): https://www.nextlytics.com/blog/agentic-ai-meets-sap-bw
 
 ---
 
-## 🆕 What's New — v0.3.0
+## 🆕 What's New — v0.4.0
+
+DataSource and source system navigation:
+
+- `bw_list_source_systems` — lists all logical source systems (LSYS) registered in BW, filterable by type (ODP_SAP, ODP_CDS, ODP_BW, ODP, FILE, HANA_SDA, HANA_LOCAL)
+- `bw_list_datasources` — recursively lists all DataSources under a source system with full APCO hierarchy path
+- `bw_get_source_system` — reads full source system metadata: type, description, connection details (ODP context/destination, HANA remote source, schema)
+- `bw_get_datasource` — reads complete DataSource structure: all fields with types, lengths, transfer flags, key flags, conversion exits, unit/currency references, and adapter configuration
+- `bw_xref` — new `source_system` parameter for `object_type=RSDS`; the correct space-padded objectName is built automatically
+
+---
+
+## What's New — v0.3.0
 
 CompositeProvider read support and BW repository navigation:
 
@@ -98,6 +110,12 @@ CompositeProvider read support and BW repository navigation:
 
 ### Repository Navigation
 - Navigate the full BW repository tree — drill from InfoArea to type folder to object to sub-folder, mirroring the Eclipse BWMT Project Explorer; each entry returns a `children_path` for seamless drill-down
+
+### DataSource Navigation
+- List all source systems connected to the BW system (ODP_SAP, ODP_CDS, ODP_BW, ODP, FILE, HANA_SDA, HANA_LOCAL)
+- Recursively list all DataSources in a source system with full APCO hierarchy path
+- Read full source system metadata including connection details (ODP context/destination, HANA remote source and schema)
+- Read complete DataSource structure: fields with types, lengths, transfer flags, adapter configuration
 
 ### Push API
 - Get JSON push schema for a write-interface aDSO
@@ -211,7 +229,9 @@ Add `.mcp.json` to your project root:
 Search BW objects by name or description. Supports wildcards (`*`). Optionally filter by object type (`ADSO`, `IOBJ`, `TRFN`, `DTPA`, etc.).
 
 ### `bw_xref`
-Find all objects that reference a given BW object (where-used analysis). Use this to find Transformations and DTPs connected to an aDSO.
+Find all objects that reference a given BW object (where-used analysis). Use this to find Transformations and DTPs connected to an aDSO, or to find the process chain(s) a DTP belongs to (`object_type=DTPA`).
+
+For DataSources (`object_type=RSDS`): pass `source_system` — the correctly space-padded objectName is built automatically.
 
 ### `bw_get_adso`
 Read the full structure of an aDSO — fields, key fields, settings, version state.
@@ -317,6 +337,18 @@ Read a global Structure — all members with type (Formula/Selection), reference
 
 ### `bw_list_contents` _(Read only)_
 Navigate the BW repository tree. Pass a path such as `""` (all InfoAreas), `"area/MYAREA"` (InfoArea contents), `"hcpr/CP_NAME"` (CP sub-folders), or `"adso/ADSO_NAME/trfn"` (Transformations on an aDSO). Each entry includes `children_path` to drill down further.
+
+### `bw_list_source_systems` _(Read only)_
+List all logical source systems (LSYS) registered in the BW DataSource structure. Optionally filter by type (`ODP_BW`, `ODP_SAP`, `ODP_CDS`, `ODP`, `FILE`). Each entry includes `children_path` — pass it directly to `bw_list_datasources` as `source_system`.
+
+### `bw_list_datasources` _(Read only)_
+List all DataSources available under a logical source system. Recursively traverses the full APCO hierarchy. Each DataSource entry includes name, description, status, and the full `apco_path` (ordered list of application component titles from root to the DataSource). Output format: `text` (default table) or `raw` (XML feed bodies).
+
+### `bw_get_source_system` _(Read only)_
+Read the metadata of a single logical source system — type, description, and connection details. For ODP systems: context, destination, validity flags. For HANA systems: remote source, database, schema, SDI adapter.
+
+### `bw_get_datasource` _(Read only)_
+Read the complete structure of a DataSource (RSDS): metadata (status, delta type, direct access, application component, package, timestamps), all fields with type, length, transfer flag, key flag, position, selection options, conversion exit, and unit/currency reference, plus active adapter configuration (ODP, HANA, File, CSV). Output format: `text` (default human-readable summary) or `raw` (XML from BW).
 
 ### `bw_activate`
 Activate one or more BW objects. Handles impact analysis and automatically deactivated DTPs. Supports: `adso`, `iobj`, `trfn`, `dtp`.
