@@ -97,10 +97,6 @@ function renderTree(nodes: DataflowNode[], header: string, direction: 'upwards' 
 
   const byId = new Map<number, DataflowNode>(nodes.map((n) => [n.id, n]));
 
-  // For downwards queries the focal object sits at the target end (no outgoing targetNodeIds).
-  // Render it at the top and follow sourceNodeIds downward.
-  // For upwards / both, the natural roots are source-end nodes (no incoming sourceNodeIds)
-  // and we follow targetNodeIds.
   const reverseDir = direction === 'downwards';
   const roots = reverseDir
     ? nodes.filter((n) => n.targetNodeIds.length === 0)

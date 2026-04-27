@@ -1298,9 +1298,11 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     {
       name: 'bw_get_dataflow',
       description:
-        'Trace the data flow graph for a BW object — upstream sources, downstream targets, or both. ' +
+        'Trace the data flow graph for a BW object. ' +
         'Returns a tree (≤ 30 nodes) or flat table (> 30 nodes) showing all connected objects ' +
         '(ADSO, RSDS, TRFN, DTPA, TRCS, IOBJ, HCPR, LSYS, ELEM) with their type, name, description, and status. ' +
+        'BW direction convention: "upwards" traverses towards BW target objects (ADSO, TRFN, TRCS, IOBJ); ' +
+        '"downwards" traverses towards source systems (LSYS, RSDS). ' +
         'Use this to understand the full lineage of an object without navigating each connection manually. ' +
         'IMPORTANT: Always print the complete tool result verbatim as a fenced code block in your chat response — never omit or summarize it.',
       inputSchema: {
@@ -1321,7 +1323,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           direction: {
             type: 'string',
             enum: ['upwards', 'downwards', 'both'],
-            description: 'Direction to traverse: "upwards" (sources), "downwards" (targets), or "both". Default "both".',
+            description: 'Direction to traverse: "upwards" (towards BW target objects: ADSO, TRFN, TRCS, IOBJ), "downwards" (towards source systems: LSYS, RSDS), or "both". Default "both".',
           },
           levels: {
             type: 'number',
