@@ -85,13 +85,18 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     {
       name: 'bw_get_adso',
       description:
-        'Read an aDSO (Advanced DataStore Object) structure — fields, settings, version. Returns the full XML of the inactive version.',
+        'Read an aDSO (Advanced DataStore Object) structure — fields, settings, version.',
       inputSchema: {
         type: 'object',
         properties: {
           adso_name: {
             type: 'string',
             description: 'aDSO name (e.g. "ADSO_NAME").',
+          },
+          format: {
+            type: 'string',
+            enum: ['text', 'raw'],
+            description: 'Output format. "text" (default): compact human-readable summary. "raw": raw XML from BW.',
           },
         },
         required: ['adso_name'],
@@ -1368,7 +1373,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         break;
 
       case 'bw_get_adso':
-        text = await bwGetAdso(client, args?.adso_name as string);
+        text = await bwGetAdso(
+          client,
+          args?.adso_name as string,
+          args?.format as 'text' | 'raw' | undefined ?? 'text',
+        );
         break;
 
       case 'bw_create_adso':
