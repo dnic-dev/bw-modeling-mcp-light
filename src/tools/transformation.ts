@@ -231,6 +231,13 @@ function summarizeTransformation(
   lines.push(`  endRoutine:    ${endRef    || '(none)'}`);
   lines.push(`  expertRoutine: ${expertRef || '(none)'}`);
 
+  if (startRef || endRef || expertRef) {
+    lines.push(`  NOTE: to read routine code, parse "ClassName.MethodName" from the path above`);
+    lines.push(`        and call GetSource(object_type="CLAS", name=ClassName, method=MethodName).`);
+    lines.push(`        Never read the ABAP Program listed in the header — it contains the full`);
+    lines.push(`        generated class (~5000 lines) and will exceed context limits.`);
+  }
+
   if (ruleMatches.length > 0) {
     lines.push('');
     lines.push('── Field Mappings ──');
