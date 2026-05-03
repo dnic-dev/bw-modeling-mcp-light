@@ -41,18 +41,21 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     {
       name: 'bw_search',
       description:
-        'Search BW objects by name or description. Optionally filter by object type (ADSO, TRFN, DTPA, IOBJ, etc.). Supports wildcards in the search term.',
+        'Universal search for BW objects by name or description. Use this whenever the user wants to find, list, or look up any BW object — aDSOs, queries (ELEM), transformations (TRFN), DTPs (DTPA), InfoObjects (IOBJ), InfoSources (ISFS), CompositeProviders (CPRO), DataSources (RSDS), InfoAreas (AREA), process chains (PRCH), and any other TLOGO type. ' +
+        'Supports wildcards (e.g. "Z*" to find all objects starting with Z). ' +
+        'Pass object_type to restrict results to a single type; omit it to search across all types. ' +
+        'Prefer this tool over type-specific get/list tools whenever the object name is unknown or a pattern is given.',
       inputSchema: {
         type: 'object',
         properties: {
           search_term: {
             type: 'string',
-            description: 'Search string. Wildcards supported (e.g. "NJ_*").',
+            description: 'Search string. Wildcards supported: * matches any sequence, ? matches a single character. Example: "Z*" finds all objects whose name starts with Z.',
           },
           object_type: {
             type: 'string',
             description:
-              'Optional object type filter: ADSO, TRFN, DTPA, IOBJ, etc. Leave empty to search all types.',
+              'Optional TLOGO filter to restrict results to one object type. Common values: ADSO (aDSO), ELEM (BEx/BW query), TRFN (transformation), DTPA (DTP), IOBJ (InfoObject), ISFS (InfoSource), CPRO (CompositeProvider), RSDS (DataSource), AREA (InfoArea), PRCH (process chain). Leave empty to search all types.',
           },
         },
         required: ['search_term'],
