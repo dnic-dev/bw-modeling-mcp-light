@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.5.0] — 2026-05-03
+
+### Added
+
+- `bw_query_data` _(Read only)_ — executes a BEx Query or previews data from an InfoProvider (aDSO, CompositeProvider) via the BICS reporting endpoint (`/sap/bw/modeling/comp/reporting`); parameters: `comp_id`, `is_provider` (adds `!` prefix for direct provider access), `state` (axis layout — ROWS/COLUMNS/FREE — plus per-characteristic filters supporting EQ/BT/GT/LT/GE/LE operators, include/exclude, external key, internal GUID key with `presentationMode="INT"`, and hierarchy-node filters via `nodeId=1`), `variables` (fills query variables; name and id must be copied verbatim from the GET response as they are session-specific and may contain trailing spaces), `from_row`/`to_row` (pagination), `drill_operations` (expand or collapse hierarchy and structure nodes by 1-based tuple index: `drill_state=3` expands, `drill_state=2` collapses), `format` (`text` default — formatted table with hierarchy indentation; `raw` — XML); all reporting calls use `X-sap-adt-sessiontype: stateless`; CSRF retry: on HTTP 403 the cached token is cleared and the request is retried once automatically
+- `bw_get_filter_values` _(Read only)_ — looks up valid characteristic values before setting filters or variables; returns both `CHAVL_EXT` (use for state filters, `presentationMode="EXT"`) and `CHAVL_INT` (use for variable inputs); supports wildcard search (`*` for all, prefix match e.g. `2022*`); parameters: `characteristic_name`, `search_string`, `info_provider` (optional, scopes values to a specific provider), `max_rows` (default 201)
+
+### Improved
+
+- `bw_get_query` — added `format` parameter: `text` (new default) renders a compact human-readable summary covering settings, variables, filter, layout (rows/columns/free characteristics), CKFs, RKFs, exceptions, and cell definitions; `raw` returns the full parsed JSON (previous behaviour)
+- `BwClient` — added `rawGet()` helper (shared session GET with caller-controlled headers, used by all reporting calls); CSRF token TTL of 4 minutes so that `ensureCsrf()` proactively re-fetches the token before SAP's ~5-minute session idle timeout expires (prevents "CSRF token has expired" failures in environments with slow tool-call approval); `clearCsrfToken()` public method exposed for use by retry logic
+
+---
+
 ## [0.4.0] — 2026-04-26
 
 ### Added

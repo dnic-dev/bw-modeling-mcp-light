@@ -35,6 +35,9 @@ export interface GetResult {
 export class BwClient {
   private http: AxiosInstance;
   private csrfToken: string | null = null;
+  private csrfTokenFetchedAt: number = 0;
+  // SAP sessions time out after ~5 minutes of inactivity; refresh the token before that.
+  private static readonly CSRF_TOKEN_TTL_MS = 4 * 60 * 1000;
   private cookies: Map<string, string> = new Map();
   // Basic Auth is only sent during the initial CSRF fetch to establish the session.
   // All subsequent requests use the session cookie only — sending Basic Auth on PUT
@@ -107,12 +110,19 @@ export class BwClient {
       );
     }
     this.csrfToken = token;
+    this.csrfTokenFetchedAt = Date.now();
   }
 
   private async ensureCsrf(): Promise<void> {
-    if (!this.csrfToken) {
+    const stale = !this.csrfToken ||
+      (Date.now() - this.csrfTokenFetchedAt) > BwClient.CSRF_TOKEN_TTL_MS;
+    if (stale) {
       await this.fetchCsrfToken();
     }
+  }
+
+  public clearCsrfToken(): void {
+    this.csrfToken = null;
   }
 
   private cookieHeaders(): Record<string, string> {
@@ -483,6 +493,35 @@ export class BwClient {
     this.updateCookies(response);
     if (response.status >= 400) {
       throw new Error(`POST ${url} → HTTP ${response.status}\n${response.data}`);
+    }
+    return {
+      body: response.data as string,
+      headers: response.headers as Record<string, string>,
+    };
+  }
+
+  /**
+   * GET to an arbitrary path using the shared session.
+   * Passes the CSRF token and session cookies; the caller controls all other headers.
+   * Use this for endpoints that need custom Accept or non-standard request headers.
+   */
+  async rawGet(
+    url: string,
+    headers: Record<string, string>
+  ): Promise<{ body: string; headers: Record<string, string> }> {
+    await this.ensureCsrf();
+    const response = await this.http.get(url, {
+      headers: {
+        'X-CSRF-Token': this.csrfToken!,
+        ...this.cookieHeaders(),
+        ...headers,
+      },
+      responseType: 'text',
+      transformResponse: [(data) => data],
+    });
+    this.updateCookies(response);
+    if (response.status >= 400) {
+      throw new Error(`GET ${url} → HTTP ${response.status}\n${response.data}`);
     }
     return {
       body: response.data as string,

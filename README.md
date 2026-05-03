@@ -16,7 +16,17 @@ Read the blog (DE + EN): https://www.nextlytics.com/blog/agentic-ai-meets-sap-bw
 
 ---
 
-## 🆕 What's New — v0.4.0
+## 🆕 What's New — v0.5.0
+
+Live data querying:
+
+- `bw_query_data` — executes a BEx Query or previews data from any InfoProvider (aDSO, CompositeProvider) via the BICS reporting endpoint; supports variable input, axis layout control (ROWS/COLUMNS/FREE), characteristic filters with include/exclude and range operators, hierarchy drill-down (expand/collapse nodes), pagination, and structure member selection; renders a formatted table with hierarchy indentation
+- `bw_get_filter_values` — looks up valid characteristic values before setting filters or variables; supports wildcard search and optional InfoProvider scoping
+- `bw_get_query` — now returns a compact human-readable summary by default; use `format="raw"` to get the previous full JSON output
+
+---
+
+## What's New — v0.4.0
 
 DataSource and source system navigation:
 
@@ -100,6 +110,12 @@ CompositeProvider read support and BW repository navigation:
 - Inline local measures inside structures: both formulas and selections
 - Exceptions with alert levels and thresholds, cell definitions for grid layout queries
 - Active version with automatic fallback to inactive
+
+### Live Data Querying
+- Execute a BEx Query or preview data from any InfoProvider (aDSO, CompositeProvider) — returns a formatted result table
+- Fill query variables, control axis layout (rows / columns / free), apply characteristic filters with include/exclude and range operators
+- Drill into hierarchy nodes and structure members (expand / collapse by tuple index)
+- Look up valid characteristic values before setting filters or variables — returns both internal and external key formats
 
 ### CompositeProvider (Read)
 - Read CompositeProvider structure — view node type (Union/Join), source providers (inputs) with mapping count, all fields with dimension classification, join conditions, and temporal join details
@@ -325,7 +341,17 @@ Get the expected JSON schema for pushing data into a write-interface aDSO.
 Push a JSON record array directly into a write-interface aDSO via the BW Push API (`/sap/bw4/v1/push/`).
 
 ### `bw_get_query` _(Read only)_
-Read a BW Query definition — variables, filter logic (fixed values and variable references resolved), layout with full member lists, calculated key figures with recursively resolved formulas, restricted key figures with selection conditions, exceptions, and query settings.
+Read a BW Query definition — variables, filter logic (fixed values and variable references resolved), layout with full member lists, calculated key figures with recursively resolved formulas, restricted key figures with selection conditions, exceptions, and query settings. Output format: `text` (default, compact human-readable summary) or `raw` (full parsed JSON).
+
+### `bw_query_data` _(Read only)_
+Execute a BEx Query or preview data from an InfoProvider (aDSO, CompositeProvider) via the BICS reporting endpoint. Returns a formatted result table with hierarchy indentation.
+
+Parameters: `comp_id` (query or provider name), `is_provider` (set `true` for direct aDSO/HCPR access), `state` (axis placement — ROWS/COLUMNS/FREE — and per-characteristic filters supporting EQ/BT/GT/LT/GE/LE, include/exclude, external key, internal GUID key, and hierarchy-node filters), `variables` (fill query variables; name and id must be copied verbatim from the GET response), `from_row`/`to_row` (pagination), `drill_operations` (expand or collapse hierarchy and structure nodes by 1-based tuple index: `drill_state=3` expands, `drill_state=2` collapses), `format` (`text` default — formatted table; `raw` — XML).
+
+Always call `bw_get_query` or `bw_get_adso` first to discover the axis layout and characteristic IDs, and call `bw_get_filter_values` before setting any filter or variable value.
+
+### `bw_get_filter_values` _(Read only)_
+Look up valid values for a characteristic — required before setting any filter or variable. Returns `CHAVL_EXT` (use for state filters) and `CHAVL_INT` (use for variable inputs); formats differ for date-type characteristics. Supports wildcard search (`*` for all values, prefix match e.g. `2022*`). Optionally scope results to a specific InfoProvider.
 
 ### `bw_get_composite_provider` _(Read only)_
 Read a CompositeProvider (HCPR) — view node type (Union/Join), source providers with input mapping counts, all fields with dimension classification, join conditions, and temporal join details.

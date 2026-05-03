@@ -24,6 +24,7 @@ import { bwGetCkf, bwGetRkf, bwGetStructure } from './tools/cp_components.js';
 import { bwListContents } from './tools/repository.js';
 import { bwListSourceSystems, bwListDatasources, bwGetSourceSystem, bwGetDatasource } from './tools/datasource.js';
 import { bwGetDataflow } from './tools/dataflow.js';
+import { bwQueryData, bwGetFilterValues, InfoObjectState, VariableInput, DrillOperation } from './tools/reporting.js';
 
 // Single shared client instance (CSRF token + session cookies are reused)
 const client = createClientFromEnv();
@@ -1112,13 +1113,19 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       description:
         'Read a BW Query definition — variables, filter, layout (rows/columns/free characteristics), ' +
         'calculated and restricted measures, exceptions, and cell definitions. ' +
-        'Tries the active version first; falls back to the inactive version if not found.',
+        'Tries the active version first; falls back to the inactive version if not found. ' +
+        'format="text" (default): compact human-readable output. format="raw": full parsed JSON.',
       inputSchema: {
         type: 'object',
         properties: {
           query_name: {
             type: 'string',
             description: 'Technical name of the query (e.g. "QUERY_NAME").',
+          },
+          format: {
+            type: 'string',
+            enum: ['text', 'raw'],
+            description: '"text" (default): structured human-readable output. "raw": full parsed JSON.',
           },
         },
         required: ['query_name'],
@@ -1298,6 +1305,213 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           },
         },
         required: ['component_name'],
+      },
+    },
+    {
+      name: 'bw_query_data',
+      description:
+        'Execute a BW query or preview data from a provider (CompositeProvider, aDSO, etc.) via the BICS reporting endpoint. ' +
+        'ALWAYS call the appropriate read tool first before querying data: ' +
+        'bw_get_composite_provider for a CompositeProvider (is_provider=true), ' +
+        'bw_get_adso for an aDSO (is_provider=true), ' +
+        'bw_get_query for a BEx Query — this gives you the available fields, key figures, ' +
+        'and the query structure before you attempt a data call. ' +
+        'Then perform a GET (no state/variables) first to discover the current axis layout, ' +
+        'characteristic ids, variables, and background filters before sending any POST. ' +
+        'IMPORTANT — always call bw_get_filter_values before applying any filter or variable value. ' +
+        'This is the only way to know the correct internal key format for a characteristic ' +
+        '(e.g. date/time characteristics like 0CALMONTH, 0CALYEAR, 0CALDAY may use non-obvious formats). ' +
+        'Never guess or assume filter value formats — always look them up first. ' +
+        'If the GET response shows inputRequired="true", variables must be filled via POST before data is available. ' +
+        'If unsure whether a BEx Query exists for the desired analysis, use bw_search or bw_list_contents first ' +
+        'before falling back to a direct provider call (is_provider=true). ' +
+        'Result is rendered as a formatted table with hierarchy indentation. ' +
+        'KEY FIGURE STRUCTURE FILTER: to restrict which key figures appear in the result, apply filterValues ' +
+        'directly on the structure dimension (isStructure=true) in state.infoObjects — use the technical name ' +
+        'of the calculated or restricted key figure as the low value (e.g. "CKF_NAME" or "RKF_NAME"). ' +
+        'Hierarchical children of the filtered member are included automatically. ' +
+        'This is the correct approach because ad-hoc threshold filters on key figure values are not supported ' +
+        'via the state mechanism; only structure-member selection is possible this way. ' +
+        'CRITICAL: variable id and name values in the variablesContainer are session-specific ' +
+        'and change between GET calls. Always extract variable id and name exactly from the ' +
+        'variablesContainer in the GET response and use them immediately in the next POST — ' +
+        'never reuse IDs from a previous GET call or from bw_get_query output. ' +
+        'The variable name includes trailing spaces and a 4-digit suffix (e.g. "VARNAME                       0004") ' +
+        'that must be copied verbatim from the GET response. ' +
+        'format="raw" returns XML.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          comp_id: {
+            type: 'string',
+            description: 'BEx Query name or InfoProvider name (ADSO, HCPR, etc.) to query.',
+          },
+          is_provider: {
+            type: 'boolean',
+            description:
+              'Set to true when comp_id is an InfoProvider name (CompositeProvider, aDSO, etc.) ' +
+              'rather than a BEx Query name. Adds the required "!" prefix to the compid URL parameter. ' +
+              'If unsure whether a query exists for the desired analysis, use bw_search or ' +
+              'bw_list_contents first to check before falling back to a direct provider call.',
+          },
+          format: {
+            type: 'string',
+            enum: ['text', 'raw'],
+            description: '"text" (default): structured human-readable output. "raw": raw XML response body.',
+          },
+          state: {
+            type: 'object',
+            description:
+              'Axis layout and optional per-characteristic filters. ' +
+              'All InfoObjects from the query must be listed (even those staying on FREE axis). ' +
+              'id values must come from the GET metadata response.',
+            properties: {
+              infoObjects: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    name: { type: 'string', description: 'InfoObject technical name.' },
+                    id: { type: 'string', description: 'id from the GET metadata response.' },
+                    axis: { type: 'string', enum: ['ROWS', 'COLUMNS', 'FREE'], description: 'Target axis.' },
+                    hierarchy: {
+                      type: 'object',
+                      description:
+                        'Active hierarchy for this characteristic. Required when filtering by hierarchy node (nodeId=1). ' +
+                        'Copy id, name, hryId, hryDateFrom, hryDateTo from the <hierarchy> element in the GET response.',
+                      properties: {
+                        id: { type: 'string', description: 'Hierarchy id attribute from GET response.' },
+                        name: { type: 'string', description: 'Hierarchy name (technical name).' },
+                        hryId: { type: 'string', description: 'hryId attribute (display name / variant).' },
+                        hryDateFrom: { type: 'string', description: 'Validity from date (YYYYMMDD). Defaults to 00000000.' },
+                        hryDateTo: { type: 'string', description: 'Validity to date (YYYYMMDD). Defaults to 99991231.' },
+                      },
+                      required: ['id', 'name', 'hryId'],
+                    },
+                    filterValues: {
+                      type: 'array',
+                      description:
+                        'Optional filter selections for this characteristic. ' +
+                        'Also works on structure dimensions (isStructure=true on ROWS or COLUMNS): ' +
+                        'set low to the technical name of a key figure, calculated key figure, or restricted key figure ' +
+                        '(e.g. "CKF_NAME") to restrict the result to that structure member and its children. ' +
+                        'This is the only supported way to filter by key figure in BICS.',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          low: { type: 'string', description: 'Filter value in external key format (e.g. altName or CHAVL_EXT). Use this for members that have a named external key.' },
+                          lowInt: { type: 'string', description: 'Filter value in internal key format (e.g. GUID like 00O2...). Use when the member has no altName and only an internal GUID is known. Sends presentationMode="INT" in BICS XML.' },
+                          lowText: { type: 'string', description: 'Display text for the value (optional).' },
+                          high: { type: 'string', description: 'Upper bound for interval operator BT.' },
+                          op: { type: 'string', description: 'Operator: EQ (default), BT, GT, LT, GE, LE.' },
+                          sign: { type: 'string', description: 'I=include (default), E=exclude.' },
+                          nodeId: { type: 'number', description: 'Node selection mode: 0=leaf member (default), 1=hierarchy node (use when filtering a collapsed hierarchy node like a group).' },
+                        },
+                      },
+                    },
+                  },
+                  required: ['name', 'id', 'axis'],
+                },
+              },
+            },
+            required: ['infoObjects'],
+          },
+          variables: {
+            type: 'array',
+            description:
+              'Variable values to fill. name must match exactly as returned by GET (may contain trailing spaces). ' +
+              'id and other metadata fields come from the GET variablesContainer response.',
+            items: {
+              type: 'object',
+              properties: {
+                name: { type: 'string', description: 'Variable technical name (exact, including trailing spaces).' },
+                id: { type: 'string', description: 'Variable id from the GET response.' },
+                txt: { type: 'string', description: 'Variable label (optional, for readability).' },
+                altName: { type: 'string', description: 'altName from the GET response (optional).' },
+                type: { type: 'string', description: 'Variable type (default "charMember").' },
+                inputEnabled: { type: 'boolean', description: 'Whether the variable accepts input (default true).' },
+                mandatory: { type: 'boolean', description: 'Whether the variable is mandatory.' },
+                iobj: { type: 'string', description: 'InfoObject the variable is based on.' },
+                values: {
+                  type: 'array',
+                  description: 'List of select values to assign.',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      low: { type: 'string', description: 'Value (CHAVL_INT internal key format).' },
+                      high: { type: 'string', description: 'Upper bound for interval (op=BT).' },
+                      op: { type: 'string', description: 'Operator: EQ (default) or BT.' },
+                      sign: { type: 'string', description: 'I=include (default).' },
+                    },
+                    required: ['low'],
+                  },
+                },
+              },
+              required: ['name', 'id', 'values'],
+            },
+          },
+          from_row: {
+            type: 'number',
+            description: 'Start row for pagination (default 0).',
+          },
+          to_row: {
+            type: 'number',
+            description: 'End row for pagination (default 1000).',
+          },
+          drill_operations: {
+            type: 'array',
+            description:
+              'Optional. Expand or collapse hierarchy nodes or key figure structure nodes in the current result. ' +
+              'Each operation targets one node by its 1-based tuple index. ' +
+              'drill_state: 3 = expand, 2 = collapse. ' +
+              'element_idx: which dimension within the tuple (1 = first, 2 = second, etc.) — ' +
+              'use 2 when ROWS has multiple dimensions and the target node is on the second one. ' +
+              'Requires the full state and variables to be sent again in the same POST (stateless endpoint). ' +
+              'Use after an initial bw_query_data call to drill into a collapsed structure node or hierarchy node.',
+            items: {
+              type: 'object',
+              properties: {
+                axis: { type: 'string', enum: ['ROWS', 'COLUMNS'] },
+                drill_state: { type: 'number', description: '3 = expand, 2 = collapse.' },
+                tuple_idx: { type: 'number', description: '1-based index of the tuple in the current result.' },
+                element_idx: { type: 'number', description: '1-based index of the dimension within the tuple.' },
+              },
+              required: ['axis', 'drill_state', 'tuple_idx', 'element_idx'],
+            },
+          },
+        },
+        required: ['comp_id'],
+      },
+    },
+    {
+      name: 'bw_get_filter_values',
+      description:
+        'Look up valid characteristic values for use in query filters or variable inputs. ' +
+        'Returns CHAVL_INT (internal key) — always use this value when setting filter selectValues or variable inputs; ' +
+        'CHAVL_EXT and CHAVL_INT often differ for date-type characteristics. ' +
+        'Supports wildcard search: use "*" to return all values, "2022*" for prefix match. ' +
+        'Optionally scope results to a specific InfoProvider (recommended when values differ by provider).',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          characteristic_name: {
+            type: 'string',
+            description: 'InfoObject technical name to get values for (e.g. "IOBJ_NAME").',
+          },
+          search_string: {
+            type: 'string',
+            description: 'Wildcard search pattern. "*" returns all values up to max_rows. Prefix with text to filter (e.g. "2022*").',
+          },
+          info_provider: {
+            type: 'string',
+            description: 'Optional. Scopes the value list to a specific InfoProvider (ADSO, HCPR, etc.). Omit to read from master data directly.',
+          },
+          max_rows: {
+            type: 'number',
+            description: 'Maximum number of values to return (default 201).',
+          },
+        },
+        required: ['characteristic_name', 'search_string'],
       },
     },
     {
@@ -1717,7 +1931,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         break;
 
       case 'bw_get_query':
-        text = await bwGetQuery(args?.query_name as string);
+        text = await bwGetQuery(
+          args?.query_name as string,
+          (args?.format as 'text' | 'raw') ?? 'text'
+        );
         break;
 
       case 'bw_list_contents':
@@ -1763,6 +1980,62 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case 'bw_get_structure':
         text = await bwGetStructure(client, args?.component_name as string);
+        break;
+
+      case 'bw_query_data': {
+        const rawState = args?.state as { infoObjects: Array<Record<string, unknown>> } | undefined;
+        const state = rawState
+          ? {
+              infoObjects: rawState.infoObjects.map((io): InfoObjectState => ({
+                name: io['name'] as string,
+                id: io['id'] as string,
+                axis: io['axis'] as string,
+                hierarchy: io['hierarchy'] as InfoObjectState['hierarchy'],
+                filterValues: io['filterValues'] as InfoObjectState['filterValues'],
+              })),
+            }
+          : undefined;
+        const rawVars = args?.variables as Array<Record<string, unknown>> | undefined;
+        const variables = rawVars?.map((v): VariableInput => ({
+          name: v['name'] as string,
+          id: v['id'] as string,
+          txt: v['txt'] as string | undefined,
+          altName: v['altName'] as string | undefined,
+          type: v['type'] as string | undefined,
+          inputEnabled: v['inputEnabled'] as boolean | undefined,
+          mandatory: v['mandatory'] as boolean | undefined,
+          iobj: v['iobj'] as string | undefined,
+          values: v['values'] as VariableInput['values'],
+        }));
+        const rawDrillOps = args?.drill_operations as Array<Record<string, unknown>> | undefined;
+        const drillOperations = rawDrillOps?.map((op): DrillOperation => ({
+          axis: op['axis'] as 'ROWS' | 'COLUMNS',
+          drill_state: op['drill_state'] as 3 | 2,
+          tuple_idx: op['tuple_idx'] as number,
+          element_idx: op['element_idx'] as number,
+        }));
+        text = await bwQueryData(
+          client,
+          args?.comp_id as string,
+          (args?.is_provider as boolean) ?? false,
+          (args?.format as 'text' | 'raw') ?? 'text',
+          state,
+          variables,
+          (args?.from_row as number) ?? 0,
+          (args?.to_row as number) ?? 1000,
+          drillOperations
+        );
+        break;
+      }
+
+      case 'bw_get_filter_values':
+        text = await bwGetFilterValues(
+          client,
+          args?.characteristic_name as string,
+          args?.search_string as string,
+          args?.info_provider as string | undefined,
+          (args?.max_rows as number) ?? 201
+        );
         break;
 
       case 'bw_get_dataflow':

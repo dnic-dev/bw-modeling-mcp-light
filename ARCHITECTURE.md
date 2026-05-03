@@ -105,7 +105,7 @@ The Push API uses a separate `axios` client instance independent of the BW Model
 ```
 src/
 ├── index.ts              # MCP server entry point, tool definitions and dispatch
-├── bw-client.ts          # HTTP client (CSRF, session, lock/unlock, GET/PUT/POST)
+├── bw-client.ts          # HTTP client (CSRF, session, lock/unlock, GET/PUT/POST/rawGet/rawPost)
 └── tools/
     ├── activation.ts     # bw_activate, bw_unlock
     ├── adso.ts           # bw_get_adso, bw_create_adso, bw_update_adso
@@ -119,12 +119,13 @@ src/
     ├── infoobject.ts     # bw_get_infoobject, bw_create_infoobject, bw_update_infoobject
     ├── infosource.ts     # bw_get_infosource, bw_create_infosource, bw_update_infosource
     ├── push.ts           # bw_push_data, bw_get_push_schema
+    ├── query.ts          # bw_get_query — full query definition parser (variables, layout, CKFs, RKFs, exceptions)
+    ├── reporting.ts      # bw_query_data, bw_get_filter_values — BICS reporting endpoint (/sap/bw/modeling/comp/reporting)
     ├── repository.ts     # bw_list_contents
     ├── search.ts         # bw_search, bw_xref
-    ├── transformation.ts # bw_get_transformation, bw_create_transformation,
-    │                     # bw_update_transformation, bw_set_transformation_routine,
-    │                     # bw_delete_transformation_routine, bw_set_transformation_runtime
-    └── query.ts          # bw_get_query
+    └── transformation.ts # bw_get_transformation, bw_create_transformation,
+                          # bw_update_transformation, bw_set_transformation_routine,
+                          # bw_delete_transformation_routine, bw_set_transformation_runtime
 ```
 
 ---

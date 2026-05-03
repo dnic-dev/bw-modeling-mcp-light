@@ -226,7 +226,118 @@ function parseDimElement(
   return result;
 }
 
-export async function bwGetQuery(queryName: string): Promise<string> {
+function renderQueryText(q: Record<string, unknown>): string {
+  const lines: string[] = [];
+  const s = (v: unknown) => (v != null && v !== '' ? String(v) : '—');
+  const bool = (v: unknown) => (v === true || v === 'true') ? 'yes' : 'no';
+
+  lines.push(`Query: ${s(q['name'])} — ${s(q['description'])}`);
+  lines.push(`InfoProvider: ${s(q['infoProvider'])} (${s(q['providerType'])})`);
+  lines.push(`InfoArea: ${s(q['infoArea'])}  Package: ${s(q['package'])}`);
+  lines.push(`Status: ${s(q['status'])}  Changed: ${s(q['changedAt'])}  By: ${s(q['responsible'])}`);
+  if (q['versionNote']) lines.push(`Note: ${q['versionNote']}`);
+
+  const settings = q['settings'] as Record<string, unknown> ?? {};
+  const zs = settings['zeroSuppression'] as Record<string, unknown> ?? {};
+  const rp = settings['resultPosition'] as Record<string, unknown> ?? {};
+  lines.push('');
+  lines.push('── Settings ──');
+  lines.push(`  Zero suppression: rows=${bool(zs['rows'])}  columns=${bool(zs['columns'])}  mode=${s(zs['mode'])}`);
+  lines.push(`  Result position: top=${bool(rp['onTop'])}  left=${bool(rp['onLeft'])}`);
+  lines.push(`  RFC=${bool(settings['rfcEnabled'])}  OData=${bool(settings['odataSupport'])}  EasyQuery=${bool(settings['easyQuery'])}`);
+  lines.push(`  Sign presentation: ${s(settings['signPresentation'])}`);
+
+  const variables = q['variables'] as unknown[] ?? [];
+  if (variables.length > 0) {
+    lines.push('');
+    lines.push('── Variables ──');
+    for (const v of variables as Record<string, unknown>[]) {
+      lines.push(`  ${s(v['technicalName'])}  ${s(v['description'])}`);
+      lines.push(`    InfoObject: ${s(v['infoObject'])}  Type: ${s(v['type'])}  ProcType: ${s(v['procType'])}`);
+      lines.push(`    InputType: ${s(v['inputType'])}  Represents: ${s(v['represents'])}`);
+    }
+  }
+
+  const filter = q['filter'] as unknown[] ?? [];
+  if (filter.length > 0) {
+    lines.push('');
+    lines.push('── Filter ──');
+    for (const f of filter as Record<string, unknown>[]) {
+      const selections = f['selections'] as unknown[] ?? [];
+      lines.push(`  ${s(f['infoObject'])}: ${JSON.stringify(selections)}`);
+    }
+  }
+
+  const rows = q['rows'] as unknown[] ?? [];
+  const columns = q['columns'] as unknown[] ?? [];
+  const free = q['freeCharacteristics'] as unknown[] ?? [];
+
+  lines.push('');
+  lines.push('── Layout ──');
+  lines.push(`  ROWS (${rows.length}):`);
+  for (const r of rows as Record<string, unknown>[]) {
+    lines.push(`    ${s(r['technicalName'] ?? r['infoObjectName'])}  ${s(r['description'])}  [${s(r['type'])}]`);
+  }
+  lines.push(`  COLUMNS (${columns.length}):`);
+  for (const c of columns as Record<string, unknown>[]) {
+    lines.push(`    ${s(c['technicalName'] ?? c['infoObjectName'])}  ${s(c['description'])}  [${s(c['type'])}]`);
+  }
+  lines.push(`  FREE (${free.length}):`);
+  for (const f of free as Record<string, unknown>[]) {
+    lines.push(`    ${s(f['technicalName'] ?? f['infoObjectName'])}  ${s(f['description'])}  [${s(f['type'])}]`);
+  }
+
+  const ckfs = q['calculatedMeasures'] as unknown[] ?? [];
+  if (ckfs.length > 0) {
+    lines.push('');
+    lines.push(`── Calculated Key Figures (${ckfs.length}) ──`);
+    for (const c of ckfs as Record<string, unknown>[]) {
+      lines.push(`  ${s(c['technicalName'])}  ${s(c['description'])}`);
+      if (c['formula']) lines.push(`    Formula: ${s(c['formula'])}`);
+    }
+  }
+
+  const rkfs = q['restrictedMeasures'] as unknown[] ?? [];
+  if (rkfs.length > 0) {
+    lines.push('');
+    lines.push(`── Restricted Key Figures (${rkfs.length}) ──`);
+    for (const r of rkfs as Record<string, unknown>[]) {
+      lines.push(`  ${s(r['technicalName'])}  ${s(r['description'])}`);
+      const member = r['member'] as Record<string, unknown> | undefined;
+      if (member?.['keyFigure']) lines.push(`    KeyFigure: ${s(member['keyFigure'])}`);
+    }
+  }
+
+  const exceptions = q['exceptions'] as unknown[] ?? [];
+  if (exceptions.length > 0) {
+    lines.push('');
+    lines.push(`── Exceptions (${exceptions.length}) ──`);
+    for (const e of exceptions as Record<string, unknown>[]) {
+      lines.push(`  ${s(e['description'])}  evaluated=${bool(e['evaluated'])}`);
+      const thresholds = e['thresholds'] as unknown[] ?? [];
+      for (const t of thresholds as Record<string, unknown>[]) {
+        lines.push(`    Level ${s(t['alertLevel'])}: ${s(t['operator'])} ${s(t['value'])}`);
+      }
+    }
+  }
+
+  const hasCells = q['hasCellDefinitions'] as boolean;
+  if (hasCells) {
+    const gridCells = q['gridCells'] as unknown[] ?? [];
+    const helpCells = q['helpCells'] as unknown[] ?? [];
+    lines.push('');
+    lines.push(`── Cell Definitions ──`);
+    lines.push(`  Grid cells: ${gridCells.length}  Help cells: ${helpCells.length}`);
+    for (const gc of gridCells as Record<string, unknown>[]) {
+      lines.push(`  [${s(gc['type'])}] ${s(gc['description'])}  coord1=${s(gc['coordinateMember1'])}  coord2=${s(gc['coordinateMember2'])}`);
+      if (gc['formula']) lines.push(`    Formula: ${s(gc['formula'])}`);
+    }
+  }
+
+  return lines.join('\n');
+}
+
+export async function bwGetQuery(queryName: string, format: 'text' | 'raw' = 'text'): Promise<string> {
   const client = createClientFromEnv();
 
   const basePath = `/sap/bw/modeling/query/${queryName.toLowerCase()}`;
@@ -550,5 +661,6 @@ export async function bwGetQuery(queryName: string): Promise<string> {
 
   if (versionNote) output['versionNote'] = versionNote;
 
-  return JSON.stringify(output, null, 2);
+  if (format === 'raw') return JSON.stringify(output, null, 2);
+  return renderQueryText(output);
 }
