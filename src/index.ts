@@ -41,7 +41,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     {
       name: 'bw_search',
       description:
-        'Universal search for BW objects by name or description. Use this whenever the user wants to find, list, or look up any BW object — aDSOs, queries (ELEM), transformations (TRFN), DTPs (DTPA), InfoObjects (IOBJ), InfoSources (ISFS), CompositeProviders (CPRO), DataSources (RSDS), InfoAreas (AREA), process chains (PRCH), and any other TLOGO type. ' +
+        'Universal search for BW objects by name or description. Use this whenever the user wants to find, list, or look up any BW object — aDSOs, queries (ELEM), transformations (TRFN), DTPs (DTPA), InfoObjects (IOBJ), InfoSources (ISFS), CompositeProviders (HCPR), DataSources (RSDS), InfoAreas (AREA), process chains (PRCH), and any other TLOGO type. ' +
         'Supports wildcards (e.g. "Z*" to find all objects starting with Z). ' +
         'Pass object_type to restrict results to a single type; omit it to search across all types. ' +
         'Prefer this tool over type-specific get/list tools whenever the object name is unknown or a pattern is given.',
@@ -55,7 +55,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           object_type: {
             type: 'string',
             description:
-              'Optional TLOGO filter to restrict results to one object type. Common values: ADSO (aDSO), ELEM (BEx/BW query), TRFN (transformation), DTPA (DTP), IOBJ (InfoObject), ISFS (InfoSource), CPRO (CompositeProvider), RSDS (DataSource), AREA (InfoArea), PRCH (process chain). Leave empty to search all types.',
+              'Optional TLOGO filter to restrict results to one object type. Common values: ADSO (aDSO), ELEM (BEx/BW query), TRFN (transformation), DTPA (DTP), IOBJ (InfoObject), ISFS (InfoSource), HCPR (CompositeProvider), RSDS (DataSource), AREA (InfoArea), PRCH (process chain). Leave empty to search all types.',
           },
         },
         required: ['search_term'],
