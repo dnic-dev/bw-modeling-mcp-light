@@ -41,7 +41,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/dnic-dev/bw-modeling-mcp.git"
+    "url": "git+https://github.com/dnic-dev/bw-modeling-mcp.git"
   },
   "author": "David Nicolay",
   "license": "MIT"
