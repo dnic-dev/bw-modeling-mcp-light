@@ -1,9 +1,30 @@
 {
   "name": "bw-modeling-mcp",
-  "version": "0.1.0",
+  "version": "0.6.0",
   "description": "MCP server for agentic AI-assisted development in SAP BW/4HANA",
   "type": "module",
   "main": "dist/index.js",
+  "bin": {
+    "bw-modeling-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "sap",
+    "bw",
+    "bw4hana",
+    "mcp",
+    "model-context-protocol",
+    "agentic-ai",
+    "abap"
+  ],
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
