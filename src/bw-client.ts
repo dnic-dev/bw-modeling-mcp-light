@@ -530,6 +530,41 @@ export class BwClient {
   }
 
   /**
+   * PUT to an arbitrary path with a clean axios instance.
+   * Caller must supply the CSRF token (obtained via getCsrfToken() after any rawGet call).
+   */
+  async rawPut(
+    url: string,
+    body: string,
+    headers: Record<string, string>
+  ): Promise<{ body: string; headers: Record<string, string> }> {
+    const freshHttp = axios.create({
+      baseURL: this.http.defaults.baseURL,
+      httpsAgent: new https.Agent({ rejectUnauthorized: false }),
+      validateStatus: () => true,
+      headers: { common: {}, get: {}, post: {}, put: {}, patch: {}, delete: {}, head: {} } as any,
+    });
+
+    const cookieHdr = this.cookieHeader();
+    const response = await freshHttp.put(url, body, {
+      headers: {
+        Authorization: this.basicAuth,
+        ...(cookieHdr ? { Cookie: cookieHdr } : {}),
+        ...headers,
+      },
+      responseType: 'text',
+    });
+    this.updateCookies(response);
+    if (response.status >= 400) {
+      throw new Error(`PUT ${url} → HTTP ${response.status}\n${response.data}`);
+    }
+    return {
+      body: response.data as string,
+      headers: response.headers as Record<string, string>,
+    };
+  }
+
+  /**
    * DELETE to an arbitrary path with a clean axios instance.
    * Fetches CSRF token automatically.
    */

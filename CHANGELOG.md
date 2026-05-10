@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.0] — 2026-05-10
+
+### Added
+
+- `bw_get_roles` _(Read only)_ — reads the complete BW role hierarchy as shown in the Eclipse BWMT "Publish to Role" dialog; returns ROLE and FOLDER nodes with technical names, descriptions, and nodeids; optional `role_filter` parameter limits output to roles whose name starts with the given prefix (e.g. `"BW:"`); endpoint: `GET /sap/bw/modeling/comp/roles?level=10&requestchk=true&readleaves=false`
+- `bw_get_role_queries` _(Read only)_ — lists all BW Queries published in the role hierarchy, grouped by role and folder; only `SAP_BW_QUERY` objects are returned — PFCG menu entries of other types (e.g. AFO workbooks added as transactions) are not included; uses `readleaves=true` on the same endpoint to retrieve `<leaf>` elements
+- `bw_get_query_roles` _(Read only)_ — returns all roles and folders where a specific BW Query is currently published; uses the `ancof` (ancestor-of) parameter: `GET /sap/bw/modeling/comp/roles?type=SAP_BW_QUERY&ancof=<QUERYNAME>`
+- `bw_set_query_roles` — publishes or removes a BW Query from a role or folder; supports `action="add"` and `action="remove"`, `target_type="role"` or `target_type="folder"`; for role-level add operations the full role subtree (folders + nodeids) is fetched from `bw_get_roles` and sent as `state="unchanged"` children in the PUT body; uses `PUT /sap/bw/modeling/comp/roles?type=SAP_BW_QUERY&ancof=<QUERYNAME>`
+- `BwClient.rawPut()` — new HTTP PUT helper on the shared BW client; sends a raw request body with caller-controlled headers using a fresh axios instance and the current session cookie; used by `bw_set_query_roles`
+
+---
+
 ## [0.5.0] — 2026-05-03
 
 ### Added

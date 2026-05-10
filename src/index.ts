@@ -25,6 +25,7 @@ import { bwListContents } from './tools/repository.js';
 import { bwListSourceSystems, bwListDatasources, bwGetSourceSystem, bwGetDatasource } from './tools/datasource.js';
 import { bwGetDataflow } from './tools/dataflow.js';
 import { bwQueryData, bwGetFilterValues, InfoObjectState, VariableInput, DrillOperation } from './tools/reporting.js';
+import { bwGetRoles, bwGetQueryRoles, bwSetQueryRoles, bwGetRoleQueries } from './tools/roles.js';
 
 // Single shared client instance (CSRF token + session cookies are reused)
 const client = createClientFromEnv();
@@ -1518,6 +1519,97 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: 'bw_get_roles',
+      description:
+        'Load the complete BW query role hierarchy as shown in the "Publish to Role" dialog. ' +
+        'Returns all roles (ROLE nodes) and their folder structure (FOLDER nodes) with nodeids. ' +
+        'Use this to discover role names and folder names needed for bw_set_query_roles. ' +
+        'Optionally filter to roles whose name starts with a given prefix.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          role_filter: {
+            type: 'string',
+            description: 'Optional prefix to filter results. Only ROLE nodes whose name starts with this prefix are included (e.g. "BW:").',
+          },
+        },
+        required: [],
+      },
+    },
+    {
+      name: 'bw_get_query_roles',
+      description:
+        'Get all roles and folders where a specific BW query is currently published. ' +
+        'Returns the role name, description, and folder for each assignment. ' +
+        'If the query is not published anywhere, returns a clear message.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          query_name: {
+            type: 'string',
+            description: 'Technical name of the BW query (case-insensitive).',
+          },
+        },
+        required: ['query_name'],
+      },
+    },
+    {
+      name: 'bw_set_query_roles',
+      description:
+        'Publish or unpublish a BW query in a role or folder. ' +
+        'action "add": assigns the query to the given role or folder. ' +
+        'action "remove": removes the query from the given role or folder. ' +
+        'Use bw_get_roles to discover role/folder names and bw_get_query_roles to see current assignments.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          query_name: {
+            type: 'string',
+            description: 'Technical name of the BW query (case-insensitive).',
+          },
+          action: {
+            type: 'string',
+            enum: ['add', 'remove'],
+            description: '"add" to publish, "remove" to unpublish.',
+          },
+          target_name: {
+            type: 'string',
+            description:
+              'For target_type "role": the name attribute of the ROLE node (e.g. from bw_get_roles). ' +
+              'For target_type "folder": the txt (display name) of the FOLDER node.',
+          },
+          target_type: {
+            type: 'string',
+            enum: ['role', 'folder'],
+            description: '"role" to assign at role level, "folder" to assign into a specific subfolder.',
+          },
+          parent_role_name: {
+            type: 'string',
+            description: 'Required when target_type is "folder". The name attribute of the parent ROLE node that contains the target folder.',
+          },
+        },
+        required: ['query_name', 'action', 'target_name', 'target_type'],
+      },
+    },
+    {
+      name: 'bw_get_role_queries',
+      description:
+        'List all BW queries published in BW roles (via the "Publish to Role" mechanism). ' +
+        'Returns each role with its assigned queries, including technical name, description, object type, and InfoProvider. ' +
+        'Note: only SAP_BW_QUERY objects are returned; PFCG menu entries of other types (e.g. AFO workbooks added as transactions) are not included. ' +
+        'Use role_name to filter to a specific role; omit it to see all roles with published queries.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          role_name: {
+            type: 'string',
+            description: 'Optional. Technical name of the role to filter by (e.g. from bw_get_roles). Omit to return all roles.',
+          },
+        },
+        required: [],
+      },
+    },
+    {
       name: 'bw_get_dataflow',
       description:
         'Trace the data flow graph for a BW object. ' +
@@ -2038,6 +2130,38 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           args?.search_string as string,
           args?.info_provider as string | undefined,
           (args?.max_rows as number) ?? 201
+        );
+        break;
+
+      case 'bw_get_roles':
+        text = await bwGetRoles(
+          client,
+          args?.role_filter as string | undefined
+        );
+        break;
+
+      case 'bw_get_query_roles':
+        text = await bwGetQueryRoles(
+          client,
+          args?.query_name as string
+        );
+        break;
+
+      case 'bw_set_query_roles':
+        text = await bwSetQueryRoles(
+          client,
+          args?.query_name as string,
+          args?.action as 'add' | 'remove',
+          args?.target_name as string,
+          args?.target_type as 'role' | 'folder',
+          args?.parent_role_name as string | undefined
+        );
+        break;
+
+      case 'bw_get_role_queries':
+        text = await bwGetRoleQueries(
+          client,
+          args?.role_name as string | undefined
         );
         break;
 

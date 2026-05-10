@@ -16,7 +16,13 @@ Read the blog (DE + EN): https://www.nextlytics.com/blog/agentic-ai-meets-sap-bw
 
 ---
 
-## 🆕 What's New — v0.5.0
+## 🆕 What's New — v0.6.0
+
+BW Role Management — four new tools for reading and managing query-to-role assignments: `bw_get_roles` (full role hierarchy), `bw_get_role_queries` (all published queries per role), `bw_get_query_roles` (which roles a query is published in), `bw_set_query_roles` (publish or remove a query from a role or folder, including support for nested menu folders).
+
+---
+
+## What's New — v0.5.0
 
 Live data querying:
 
@@ -136,6 +142,14 @@ CompositeProvider read support and BW repository navigation:
 - Recursively list all DataSources in a source system with full APCO hierarchy path
 - Read full source system metadata including connection details (ODP context/destination, HANA remote source and schema)
 - Read complete DataSource structure: fields with types, lengths, transfer flags, adapter configuration
+
+### BW Role Management
+- Read the full role hierarchy (ROLE + FOLDER structure)
+- List all queries published per role
+- Check which roles a specific query is assigned to
+- Publish a query into a role or a specific sub-folder
+- Remove a query from a role or folder
+- Move a query between roles (remove from old, add to new)
 
 ### Push API
 - Get JSON push schema for a write-interface aDSO
@@ -352,6 +366,18 @@ Always call `bw_get_query` or `bw_get_adso` first to discover the axis layout an
 
 ### `bw_get_filter_values` _(Read only)_
 Look up valid values for a characteristic — required before setting any filter or variable. Returns `CHAVL_EXT` (use for state filters) and `CHAVL_INT` (use for variable inputs); formats differ for date-type characteristics. Supports wildcard search (`*` for all values, prefix match e.g. `2022*`). Optionally scope results to a specific InfoProvider.
+
+### `bw_get_roles` _(Read only)_
+Read the complete BW role hierarchy as displayed in the Eclipse BWMT "Publish to Role" dialog. Returns all ROLE and FOLDER nodes with technical names, descriptions, and nodeids. Optional `role_filter` parameter limits output to roles whose name starts with the given prefix (e.g. `"BW:"`).
+
+### `bw_get_role_queries` _(Read only)_
+List all BW Queries published in the role hierarchy, grouped by role and folder. Only `SAP_BW_QUERY` objects are returned — PFCG menu entries of other types (e.g. AFO workbooks added as transactions) are not included. Optional `role_name` to scope to a specific role.
+
+### `bw_get_query_roles` _(Read only)_
+Return all roles and folders where a specific BW Query is currently published. Returns a clear "not published" message if the query has no role assignments.
+
+### `bw_set_query_roles`
+Publish or remove a BW Query from a role or folder. Parameters: `query_name`, `action` (`"add"` or `"remove"`), `target_type` (`"role"` or `"folder"`), `target_name` (role name attribute for role-level, folder txt for folder-level), `parent_role_name` (required when `target_type="folder"`). For add operations, the full role subtree is fetched automatically from `bw_get_roles` — no manual lookup needed.
 
 ### `bw_get_composite_provider` _(Read only)_
 Read a CompositeProvider (HCPR) — view node type (Union/Join), source providers with input mapping counts, all fields with dimension classification, join conditions, and temporal join details.
