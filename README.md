@@ -178,6 +178,8 @@ The BW MCP server handles the BW modeling structure — creating the Transformat
 |---|---|
 | SAP BW/4HANA (all versions) | ✅ Full support |
 
+<p><em><sub>SAP BW on HANA (7.5) is not supported. While individual tools may work, most HTTP communications cannot reliably pass through the server-side version negotiation in BW 7.5, causing most tools to fail with HTTP 406 errors.</sub></em></p>
+
 ---
 
 ## Requirements
@@ -191,6 +193,10 @@ The BW MCP server handles the BW modeling structure — creating the Transformat
 ## Installation
 
 ```bash
+# Option 1: Install via npm (recommended)
+npm install -g bw-modeling-mcp
+
+# Option 2: Clone and build
 git clone https://github.com/dnic-dev/bw-modeling-mcp.git
 cd bw-modeling-mcp
 npm install
@@ -499,7 +505,6 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the full technical architecture and c
 
 ## Roadmap
 
-- **BW on HANA support** — extend compatibility to SAP BW 7.5 on HANA. Support will be ⚠️ Partial — not all REST endpoints available in BW/4HANA exist in BW on HANA, so some tools may not be available or behave differently.
 - **CompositeProvider** — Read: `bw_get_composite_provider` ✅, global components (`bw_get_ckf` / `bw_get_rkf` / `bw_get_structure`) ✅ — Create and modify: planned
 - **BW Queries** — Read: `bw_get_query` ✅ — Create and modify: planned
 - **Process Chains** — build and manage Process Chains
