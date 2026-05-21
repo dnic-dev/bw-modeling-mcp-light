@@ -16,7 +16,17 @@ Read the blog (DE + EN): https://www.nextlytics.com/blog/agentic-ai-meets-sap-bw
 
 ---
 
-## 🆕 What's New — v0.6.0
+## 🆕 What's New — v0.7.0
+
+Process Chain support and DataSource data preview:
+
+- `bw_get_process_chain` — reads a complete Process Chain definition including all steps, conditional dependencies, DECISION branch labels, and inline variant configuration; automatically fetches and embeds variant detail (ABAP program + selection variant, TRIGGER scheduling, ADSOACT target aDSO, ADSOREM cleanup settings, PLSWITCHL/P target, DECISION branching formulas) for each step in a single call — deterministic, no additional prompting needed; supports recursive sub-chain expansion by calling the tool again on any referenced chain name
+- `bw_get_process_variant` — reads the configuration detail of any individual process step variant; generic across all 93 BW/4HANA process types; oDetail returned as structured JSON
+- `bw_preview_datasource` — fetches a live data preview from any DataSource; resolves field names automatically from the DataSource structure and renders a formatted table; record count configurable (default 20)
+
+---
+
+## What's New — v0.6.0
 
 BW Role Management — four new tools for reading and managing query-to-role assignments: `bw_get_roles` (full role hierarchy), `bw_get_role_queries` (all published queries per role), `bw_get_query_roles` (which roles a query is published in), `bw_set_query_roles` (publish or remove a query from a role or folder, including support for nested menu folders).
 
@@ -154,6 +164,18 @@ CompositeProvider read support and BW repository navigation:
 ### Push API
 - Get JSON push schema for a write-interface aDSO
 - Push JSON record arrays directly into an aDSO
+
+### Process Chain Navigation
+- Read complete Process Chain definitions — all steps with type, variant, description, and last execution status
+- Conditional flow semantics fully resolved: DECISION branch labels (including ABAP formula expressions), OR/AND join nodes, positive/negative/neutral edge conditions
+- Automatic variant detail per step: ABAP program and selection variant, TRIGGER scheduling parameters, ADSOACT/ADSOREM aDSO targets and cleanup settings, PLSWITCHL/P target aDSO, DECISION branching formulas — all embedded inline in a single tool call
+- Recursive sub-chain expansion: CHAIN-type steps reference other Process Chains — call `bw_get_process_chain` again on any referenced chain name to expand the full hierarchy
+- Generic process variant reader: covers all 93 BW/4HANA process types including custom Z-types; unknown types return oDetail as raw JSON
+
+### DataSource Data Preview
+- Fetch a live data preview from any DataSource (RSDS) directly from the source system
+- Field names resolved automatically from the DataSource structure; configurable record count (default 20)
+- Rendered as a padded plain-text table with column alignment
 
 ### General
 - Search & Where-Used (xref)
@@ -372,6 +394,15 @@ Always call `bw_get_query` or `bw_get_adso` first to discover the axis layout an
 
 ### `bw_get_filter_values` _(Read only)_
 Look up valid values for a characteristic — required before setting any filter or variable. Returns `CHAVL_EXT` (use for state filters) and `CHAVL_INT` (use for variable inputs); formats differ for date-type characteristics. Supports wildcard search (`*` for all values, prefix match e.g. `2022*`). Optionally scope results to a specific InfoProvider.
+
+### `bw_get_process_chain` _(Read only)_
+Read a Process Chain (RSPC) definition — header metadata, scheduling and monitoring settings, all steps with type, variant, last execution status, conditional dependencies with DECISION branch labels, and automatically embedded variant configuration per step. Set `include_variant_details=false` for a fast structural overview. Output format: `text` (default) or `raw` (full JSON).
+
+### `bw_get_process_variant` _(Read only)_
+Read the detail configuration of a single Process Chain step variant. Generic across all process types — oDetail rendered as indented JSON. Use process_type and variant_name from `bw_get_process_chain` output.
+
+### `bw_preview_datasource` _(Read only)_
+Fetch a live data preview from a DataSource. Resolves field names automatically and renders a formatted table. Parameters: `datasource_name`, `source_system`, `records` (default 20).
 
 ### `bw_get_roles` _(Read only)_
 Read the complete BW role hierarchy as displayed in the Eclipse BWMT "Publish to Role" dialog. Returns all ROLE and FOLDER nodes with technical names, descriptions, and nodeids. Optional `role_filter` parameter limits output to roles whose name starts with the given prefix (e.g. `"BW:"`).

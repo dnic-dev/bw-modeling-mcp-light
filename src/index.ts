@@ -23,10 +23,12 @@ import { bwGetQuery } from './tools/query.js';
 import { bwGetCompositeProvider } from './tools/composite_provider.js';
 import { bwGetCkf, bwGetRkf, bwGetStructure } from './tools/cp_components.js';
 import { bwListContents } from './tools/repository.js';
-import { bwListSourceSystems, bwListDatasources, bwGetSourceSystem, bwGetDatasource } from './tools/datasource.js';
+import { bwListSourceSystems, bwListDatasources, bwGetSourceSystem, bwGetDatasource, bwPreviewDatasource } from './tools/datasource.js';
 import { bwGetDataflow } from './tools/dataflow.js';
 import { bwQueryData, bwGetFilterValues, InfoObjectState, VariableInput, DrillOperation } from './tools/reporting.js';
 import { bwGetRoles, bwGetQueryRoles, bwSetQueryRoles, bwGetRoleQueries } from './tools/roles.js';
+import { bwGetProcessChain } from './tools/processchain.js';
+import { bwGetProcessVariant } from './tools/processvariant.js';
 
 // Single shared client instance (CSRF token + session cookies are reused)
 const client = createClientFromEnv();
@@ -930,6 +932,68 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: 'bw_get_process_chain',
+      description:
+        'Read a Process Chain (RSPC) definition — header metadata, scheduling and monitoring ' +
+        'settings, all steps (nodes) with type, variant, and last execution status, ' +
+        'step dependencies (edges) with branch conditions for DECISION nodes, ' +
+        'and inline variant details. ' +
+        'By default (include_variant_details=true), automatically fetches and embeds the full ' +
+        'variant configuration for each step that has detail available. ' +
+        'Steps without variant detail (DTP_LOAD, OR, AND, EXOR, CHAIN) are shown without extra detail — ' +
+        'for DTP_LOAD use bw_get_dtp, for CHAIN use bw_get_process_chain recursively. ' +
+        'Set include_variant_details=false for a faster structural overview without variant detail. ' +
+        'Use bw_search with object_type=PRCH to find chain names first.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          chain_name: {
+            type: 'string',
+            description: 'Process chain technical name (e.g. "CHAIN_NAME"). Case-insensitive.',
+          },
+          format: {
+            type: 'string',
+            enum: ['text', 'raw'],
+            description: 'Output format. "text" (default): compact human-readable summary. "raw": full parsed JSON.',
+          },
+          include_variant_details: {
+            type: 'boolean',
+            description: 'If true (default), fetches variant configuration detail for each step automatically and includes it inline. Set to false to skip variant detail fetching for faster response on large chains.',
+          },
+        },
+        required: ['chain_name'],
+      },
+    },
+    {
+      name: 'bw_get_process_variant',
+      description:
+        'Read the detail configuration of a single Process Variant from a Process Chain step. ' +
+        'Covers all process types: ABAP (report name + selection variant), ADSOACT (aDSO activation), ' +
+        'ADSOREM (request cleanup), PLSWITCHL/PLSWITCHP (planning mode switch), DTP_LOAD, ' +
+        'DECISION, and any other type — oDetail is returned as indented JSON for unknown types. ' +
+        'Get process_type and variant_name from bw_get_process_chain output (sProcessType and sProcessVariant fields). ' +
+        'Use format="raw" to see the full unformatted JSON.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          process_type: {
+            type: 'string',
+            description: 'Process type technical name from the chain step (e.g. "ABAP", "DTP_LOAD", "ADSOACT", "ADSOREM", "PLSWITCHL", "PLSWITCHP", "DECISION"). Case-insensitive.',
+          },
+          variant_name: {
+            type: 'string',
+            description: 'Process variant technical name from the chain step (e.g. "ILV_...", "DTP_...", "DEL_..."). Case-insensitive.',
+          },
+          format: {
+            type: 'string',
+            enum: ['text', 'raw'],
+            description: 'Output format. "text" (default): readable summary with oDetail as indented JSON. "raw": full parsed JSON.',
+          },
+        },
+        required: ['process_type', 'variant_name'],
+      },
+    },
+    {
       name: 'bw_create_dtp',
       description:
         'Create a new DTP (Data Transfer Process) for an existing Transformation and activate it. ' +
@@ -1205,7 +1269,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         'List all DataSources (RSDS) available under a logical source system. ' +
         'Recursively traverses the full application component (APCO) hierarchy — may take time for large systems. ' +
         'Returns each DataSource with name, source_system, description, status, self_url, and apco_path ' +
-        '(ordered list of application component titles from root to the DataSource).',
+        '(ordered list of application component titles from root to the DataSource). ' +
+        'Optional apco_path_filter restricts the result to a hierarchy subtree and also prunes traversal.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -1217,6 +1282,15 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
             type: 'string',
             enum: ['text', 'raw'],
             description: 'Output format. "text" (default): compact plain-text table. "raw": raw XML feed bodies from BW.',
+          },
+          apco_path_filter: {
+            type: 'string',
+            description:
+              'Optional APCO hierarchy filter. A contiguous sequence of APCO names, "/"-style separated by ">". ' +
+              'May start at any depth in the hierarchy (not root-anchored). Example: "LEVEL_1 > LEVEL_2" returns ' +
+              'every DataSource that lives under a path containing LEVEL_1 directly followed by LEVEL_2. ' +
+              'Each segment matches case-insensitively against the APCO display title OR the technical APCO name (trimmed). ' +
+              'A single segment like "IS-U" returns all DataSources under any APCO subtree named "IS-U", at any depth.',
           },
         },
         required: ['source_system'],
@@ -1256,6 +1330,35 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
             type: 'string',
             enum: ['text', 'raw'],
             description: 'Output format. "text" (default): compact human-readable summary. "raw": raw XML from BW.',
+          },
+        },
+        required: ['datasource_name', 'source_system'],
+      },
+    },
+    {
+      name: 'bw_preview_datasource',
+      description:
+        'Fetch a live data preview / sample rows from a DataSource (RSDS) — ' +
+        'reads the first N rows directly from the source system and returns them ' +
+        'as a formatted table with field names as column headers. ' +
+        'Use this when the user wants to see, sample, preview, or inspect the actual ' +
+        'data behind a DataSource (e.g. "show me data from DS_X", "preview 50 rows", ' +
+        '"what does DS_X look like"). ' +
+        'For data from an aDSO, CompositeProvider, or BEx query, use bw_query_data instead.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          datasource_name: {
+            type: 'string',
+            description: 'DataSource name (e.g. "DS_NAME"). Case-insensitive.',
+          },
+          source_system: {
+            type: 'string',
+            description: 'Logical source system name (e.g. "LSYS_NAME"). Case-insensitive.',
+          },
+          records: {
+            type: 'number',
+            description: 'Number of records to fetch (default: 20). SAP returns at most this many rows.',
           },
         },
         required: ['datasource_name', 'source_system'],
@@ -1975,6 +2078,24 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         text = await bwGetDtp(client, args?.dtp_name as string);
         break;
 
+      case 'bw_get_process_chain':
+        text = await bwGetProcessChain(
+          client,
+          args?.chain_name as string,
+          args?.format as 'text' | 'raw' | undefined ?? 'text',
+          args?.include_variant_details !== false,
+        );
+        break;
+
+      case 'bw_get_process_variant':
+        text = await bwGetProcessVariant(
+          client,
+          args?.process_type as string,
+          args?.variant_name as string,
+          args?.format as 'text' | 'raw' | undefined ?? 'text',
+        );
+        break;
+
       case 'bw_create_dtp':
         text = await bwCreateDtp(client, {
           trfn_name: args?.trfn_name as string,
@@ -2046,6 +2167,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           client,
           args?.source_system as string,
           args?.format as 'text' | 'raw' | undefined ?? 'text',
+          args?.apco_path_filter as string | undefined,
         );
         break;
 
@@ -2059,6 +2181,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           args?.datasource_name as string,
           args?.source_system as string,
           args?.format as 'text' | 'raw' | undefined ?? 'text',
+        );
+        break;
+
+      case 'bw_preview_datasource':
+        text = await bwPreviewDatasource(
+          client,
+          args?.datasource_name as string,
+          args?.source_system as string,
+          (args?.records as number | undefined) ?? 20,
         );
         break;
 

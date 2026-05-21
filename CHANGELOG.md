@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.7.0] — 2026-05-21
+
+### Added
+
+- `bw_get_process_chain` — reads a Process Chain (RSPC) definition via the BW/4HANA-specific endpoint (`/sap/bw/modeling/rspc/{name}/m`, Accept: `application/vnd.sap.bw4.modeling.processchain-v1_0_0+json`); returns header metadata (description, InfoArea, status, version), scheduling attributes (job priority, owner, server, streaming mode), monitoring settings (auto-monitored, error notification, keep-alive, auto-reset), all steps (nodes) with process type, variant, description, last execution status, DECISION branch labels with socket resolution, OR join annotations, and sub-chain references; edges with full conditional flow semantics (positive/negative/neutral, DECISION branch names resolved from socket descriptions); inline variant section; by default (`include_variant_details=true`) automatically fetches and embeds variant configuration for each step via internal calls to `/sap/bw4/v1/modeling/processtypes/{type}/variants/{name}/m` — deterministic, not prompt-driven; types with no variant schema (DTP_LOAD, CHAIN, OR, AND, EXOR, DTP_ADSO) are skipped; set `include_variant_details=false` for structural overview without variant detail; `format="raw"` returns full parsed JSON; use `bw_search` with `object_type=PRCH` to find chain names
+- `bw_get_process_variant` — reads the detail configuration of a single Process Chain step variant from `/sap/bw4/v1/modeling/processtypes/{type}/variants/{name}/m`; generic across all 93 BW/4HANA process types; `oDetail` returned as indented JSON regardless of type — covers ABAP (program + selection variant), ADSOACT (aDSO + NOCONDENSE), ADSOREM (cleanup: days/requests), PLSWITCHL/PLSWITCHP (target aDSO), TRIGGER (full scheduling payload), DECISION (branch formula expressions), and any unknown type; `format="raw"` returns full parsed JSON; process_type and variant_name come from `bw_get_process_chain` output
+- `bw_preview_datasource` — fetches a live data preview from a DataSource (RSDS) via the internal `rsdsint/dataprev` endpoint (`POST /sap/bw/modeling/rsdsint/dataprev/{source_system}/{datasource}?records={n}&external=true`); field names resolved automatically from a prior GET on the DataSource structure; renders a padded plain-text table with proper column alignment; `records` parameter configurable (default 20); handles field/column count mismatch with fallback to `COL_N` headers and warning
+
+### Notes
+
+- Process chain support uses the BW/4HANA-specific `/sap/bw4/` API namespace — the same API consumed internally by the BW/4HANA Cockpit (Fiori); `Accept: */*` is used to negotiate the correct media type automatically
+- `bw_get_process_chain` with recursive sub-chain expansion: call the tool again on any CHAIN-type step's variant name to drill into the sub-chain
+
+---
+
 ## [0.6.0] — 2026-05-10
 
 ### Added

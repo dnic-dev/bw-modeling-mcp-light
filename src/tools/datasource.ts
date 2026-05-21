@@ -93,6 +93,7 @@ export async function bwListDatasources(
   client: BwClient,
   sourceSystem: string,
   format: 'text' | 'raw' = 'text',
+  apcoPathFilter?: string,
 ): Promise<string> {
   interface DatasourceEntry {
     name: string;
@@ -102,23 +103,46 @@ export async function bwListDatasources(
     apco_path: string[];
   }
 
+  const filterSegments: string[] = apcoPathFilter
+    ? apcoPathFilter.split('>').map(s => s.trim().toLowerCase()).filter(s => s.length > 0)
+    : [];
+  const filterLen = filterSegments.length;
+
+  const segmentMatches = (title: string, name: string, idx: number): boolean => {
+    const seg = filterSegments[idx];
+    return title.trim().toLowerCase() === seg || name.trim().toLowerCase() === seg;
+  };
+
+  const advanceMatch = (currentPtr: number, title: string, name: string): number => {
+    if (filterLen === 0) return 0;
+    if (currentPtr >= filterLen) return currentPtr;
+    if (segmentMatches(title, name, currentPtr)) return currentPtr + 1;
+    if (currentPtr > 0 && segmentMatches(title, name, 0)) return 1;
+    return 0;
+  };
+
   const datasources: DatasourceEntry[] = [];
   const rawBlocks: string[] = [];
   const sourceSystemUpper = sourceSystem.toUpperCase();
 
-  async function recurse(url: string, apcoPath: string[]): Promise<void> {
+  async function recurse(url: string, apcoPath: string[], matchPtr: number): Promise<void> {
     const { body } = await client.get(url, 'application/atom+xml');
+    const inside = matchPtr >= filterLen;
+
     if (format === 'raw') {
-      rawBlocks.push(`Source System: ${sourceSystemUpper}\n${body}`);
+      if (inside) rawBlocks.push(`Source System: ${sourceSystemUpper}\n${body}`);
       for (const e of parseEntries(body)) {
         if (e.objectType === 'APCO' && e.childrenHref) {
-          await recurse(e.childrenHref, []);
+          const nextPtr = advanceMatch(matchPtr, e.title, e.objectName);
+          await recurse(e.childrenHref, [...apcoPath, e.title], nextPtr);
         }
       }
       return;
     }
+
     for (const e of parseEntries(body)) {
       if (e.objectType === 'RSDS') {
+        if (!inside) continue;
         const name = e.displayObjectName
           ? e.displayObjectName.split(' (')[0]
           : e.objectName.trim().split(' ')[0];
@@ -130,12 +154,13 @@ export async function bwListDatasources(
           apco_path: [...apcoPath],
         });
       } else if (e.objectType === 'APCO' && e.childrenHref) {
-        await recurse(e.childrenHref, [...apcoPath, e.title]);
+        const nextPtr = advanceMatch(matchPtr, e.title, e.objectName);
+        await recurse(e.childrenHref, [...apcoPath, e.title], nextPtr);
       }
     }
   }
 
-  await recurse(`${BASE}/lsys/${sourceSystem.toLowerCase()}`, []);
+  await recurse(`${BASE}/lsys/${sourceSystem.toLowerCase()}`, [], 0);
 
   if (format === 'raw') return rawBlocks.join('\n\n');
 
@@ -143,9 +168,14 @@ export async function bwListDatasources(
   const header = `${p('NAME', 30)} ${p('STATUS', 9)} ${p('APCO PATH', 32)} ${p('DESCRIPTION', 36)} URL`;
   const sep = '-'.repeat(header.length);
 
-  const lines: string[] = [
+  const headerLines: string[] = [
     `Source System: ${sourceSystemUpper}`,
     `DataSources: ${datasources.length}`,
+  ];
+  if (apcoPathFilter) headerLines.push(`APCO Path Filter: ${apcoPathFilter}`);
+
+  const lines: string[] = [
+    ...headerLines,
     '',
     header,
     sep,
@@ -537,4 +567,100 @@ export async function bwGetSourceSystem(client: BwClient, sourceSystem: string):
   }
 
   return JSON.stringify(result, null, 2);
+}
+
+export async function bwPreviewDatasource(
+  client: BwClient,
+  datasourceName: string,
+  sourceSystem: string,
+  records: number = 20,
+): Promise<string> {
+  const structureUrl = `/sap/bw/modeling/rsds/${datasourceName.toLowerCase()}/${sourceSystem.toUpperCase()}/m`;
+  const { body: structureBody } = await client.get(structureUrl, RSDS_ACCEPT);
+
+  const segMatch = structureBody.match(/<segment\b[^>]*ID="0001"[^>]*>([\s\S]*?)<\/segment>/);
+  const segBody = segMatch?.[1] ?? '';
+
+  const fieldEntries: Array<{ name: string; position: number }> = [];
+  const fieldRe = /<field\b([\s\S]*?)>([\s\S]*?)<\/field>/g;
+  let fm: RegExpExecArray | null;
+  while ((fm = fieldRe.exec(segBody)) !== null) {
+    const fTag = fm[1];
+    const fBody = fm[2];
+    const fieldName = fTag.match(/\bname="([^"]*)"/)?.[1] ?? '';
+    const fpMatch = fBody.match(/<fieldProperties\b([\s\S]*?)(?:\/>|>)/);
+    const fpAttrs = fpMatch?.[1] ?? '';
+    const transferRaw = fpAttrs.match(/\btransfer="([^"]*)"/)?.[1];
+    if (transferRaw === 'false') continue;
+    const posRaw = fpAttrs.match(/\bposition="([^"]*)"/)?.[1];
+    const position = posRaw !== undefined ? parseInt(posRaw, 10) : 0;
+    fieldEntries.push({ name: fieldName, position });
+  }
+  fieldEntries.sort((a, b) => a.position - b.position);
+  const fieldNames = fieldEntries.map(f => f.name);
+
+  const url = `/sap/bw/modeling/rsdsint/dataprev/${datasourceName.toUpperCase()}/${sourceSystem.toUpperCase()}?records=${records}&external=true`;
+  const csrfToken = await client.getCsrfToken();
+  const { body: previewBody } = await client.rawPost(url, '', {
+    'x-csrf-token': csrfToken,
+    'X-sap-adt-profiling': 'server-time',
+  });
+
+  const contentMatch = previewBody.match(/<simpleParams\b[^>]*\bcontent="([^"]*)"/);
+  const content = contentMatch?.[1] ?? '';
+  const decoded = Buffer.from(content, 'base64').toString('utf-8');
+  const parsed = JSON.parse(decoded) as { T_DATA_0001?: string[][] };
+  const rows: string[][] = parsed['T_DATA_0001'] ?? [];
+
+  const summaryHeader = [
+    `DataSource: ${datasourceName.toUpperCase()} / Source System: ${sourceSystem.toUpperCase()}`,
+    `Records: ${rows.length} (requested: ${records})`,
+  ].join('\n');
+
+  if (rows.length === 0) {
+    return `${summaryHeader}\n(no data returned)`;
+  }
+
+  const columnCount = rows[0].length;
+  let headers: string[];
+  let mismatchWarning: string | null = null;
+  if (fieldNames.length !== columnCount) {
+    headers = Array.from({ length: columnCount }, (_, i) => `COL_${i + 1}`);
+    mismatchWarning = `Warning: field count mismatch (fields: ${fieldNames.length}, columns: ${columnCount}) — column names may be incorrect.`;
+  } else {
+    headers = fieldNames;
+  }
+
+  const MAX_WIDTH = 30;
+  const truncate = (s: string): string => (s.length > MAX_WIDTH ? s.slice(0, 27) + '...' : s);
+
+  const truncatedRows = rows.map(row => row.map(truncate));
+  const truncatedHeaders = headers.map(truncate);
+
+  const widths: number[] = truncatedHeaders.map((h, i) => {
+    let w = h.length;
+    for (const row of truncatedRows) {
+      const cell = row[i] ?? '';
+      if (cell.length > w) w = cell.length;
+    }
+    return Math.min(w, MAX_WIDTH);
+  });
+
+  const formatRow = (cells: string[]): string =>
+    cells.map((c, i) => c.padEnd(widths[i])).join(' ');
+
+  const headerLine = formatRow(truncatedHeaders);
+  const sepLine = widths.map(w => '-'.repeat(w)).join(' ');
+
+  const lines: string[] = [summaryHeader, '', headerLine, sepLine];
+  for (const row of truncatedRows) {
+    const cells = headers.map((_, i) => row[i] ?? '');
+    lines.push(formatRow(cells));
+  }
+  if (mismatchWarning) {
+    lines.push('');
+    lines.push(mismatchWarning);
+  }
+
+  return lines.join('\n');
 }

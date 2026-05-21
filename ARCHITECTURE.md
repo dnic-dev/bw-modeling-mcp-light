@@ -112,7 +112,9 @@ src/
     ├── composite_provider.ts # bw_get_composite_provider
     ├── cp_components.ts  # bw_get_ckf, bw_get_rkf, bw_get_structure
     ├── dataflow.ts       # bw_get_dataflow — transient data flow graph via /sap/bw/modeling/dmod/8TRANSIENT
-    ├── datasource.ts     # bw_list_source_systems, bw_list_datasources, bw_get_source_system, bw_get_datasource
+    ├── datasource.ts     # bw_list_source_systems, bw_list_datasources, bw_get_source_system, bw_get_datasource, bw_preview_datasource
+    ├── processchain.ts   # bw_get_process_chain — reads RSPC via bw4 API; auto-fetches variant details per step
+    ├── processvariant.ts # bw_get_process_variant — generic variant detail reader for all 93 process types
     ├── delete.ts         # bw_delete
     ├── dtp.ts            # bw_get_dtp, bw_get_dtps, bw_create_dtp, bw_update_dtp, bw_set_dtp_filter_routine
     ├── infoarea.ts       # bw_get_infoarea, bw_create_infoarea, bw_move_object
@@ -163,7 +165,9 @@ Full endpoint list from BW/4HANA discovery — **47 workspaces, 130+ endpoints**
 | BW Object | Endpoint | Media Type |
 |---|---|---|
 | DTP | `/sap/bw/modeling/dtpa` | `dtp_load-v1_0_0+json` |
-| Process Chain | `/sap/bw/modeling/rspc` | `chain-v1_0_0+json` |
+| Process Chain | `/sap/bw/modeling/rspc` | `application/vnd.sap.bw4.modeling.processchain-v1_0_0+json` (bw4 namespace) |
+| Process Variant Detail | `/sap/bw4/v1/modeling/processtypes/{type}/variants/{name}/m` | `application/vnd.sap.bw4.modeling.processtypes+json` (Accept: `*/*`) |
+| Process Types Discovery | `/sap/bw4/v1/modeling/processtypes` | `application/vnd.sap.bw4.modeling.processtypes+json` |
 | Process Variant | `/sap/bw/modeling/rspv` | `rspv-v1_0_0+json` |
 | Process Type | `/sap/bw/modeling/rstp` | `type-v1_0_0+json` |
 | Process Trigger | `/sap/bw/modeling/rspt` | `trigger-v1_0_0+json` |
