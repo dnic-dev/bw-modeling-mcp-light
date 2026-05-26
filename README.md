@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/dnic-dev-bw-modeling-mcp-badge.png)](https://mseep.ai/app/dnic-dev-bw-modeling-mcp)
+
 # bw-modeling-mcp
 
 A Model Context Protocol (MCP) server that enables AI assistants like Claude to work directly inside SAP BW/4HANA systems — reading, creating and modifying BW modeling objects via the internal REST API used by Eclipse BWMT.
